@@ -1,74 +1,17 @@
 let cols, rows;
-let size = 25; // Size of each tile
+let size = 50; // Size of each tile
 let tiles = []; // Holds the tile objects
 let currentSymmetry = "D4"; // Default symmetry type
 let motifRatio = 2; // Determines the size of the repeating motif
+let synth;
 let speedSlider; // Slider to control playback speed
 let symmetrySelector; // Dropdown for symmetry selection
-let scaleSelector; // Dropdown for scale selection
-
-// Define scales
-const scales = [
-  [45, 48, 52, 57], // F Minor
-  [40, 43, 47, 50], // E Minor
-  [48, 50, 53, 57], // C Major
-];
-
-// Define instruments for each quadrant
-const instruments = {
-  TL: new Tone.Synth().toDestination(), // Top-Left
-  TR: new Tone.FMSynth().toDestination(), // Top-Right
-  BL: new Tone.AMSynth().toDestination(), // Bottom-Left
-  BR: new Tone.PolySynth().toDestination(), // Bottom-Right
-};
-
-// Assign a scale to instruments
-function assignScaleToInstruments(scaleIndex) {
-  const selectedScale = scales[scaleIndex]; // Select scale by index
-  const instrumentKeys = Object.keys(instruments);
-
-  // Assign each note in the scale to an instrument
-  instrumentKeys.forEach((key, i) => {
-    instruments[key].note = selectedScale[i % selectedScale.length]; // Assign MIDI note cyclically
-  });
-
-  console.log("Assigned scale to instruments:", selectedScale);
-}
-
-// Play the assigned notes with rhythmic variety
-function playAssignedNotes() {
-  const startTime = Tone.now();
-  const timeStep = 0.5; // Base time between notes
-  const rhythmicPatterns = {
-    TL: [0.5, 1, 0.25, null, 0.75], // Top-Left: Fast and short, with rests
-    TR: [1, 0.25, 0.75, null, 1.5], // Top-Right: Medium and syncopated
-    BL: [0.25, 0.5, 0.25, null, 1], // Bottom-Left: Faster rhythm
-    BR: [1.5, null, 1, 0.5, 0.75], // Bottom-Right: Slower rhythm
-  };
-
-  Object.keys(instruments).forEach((key, quadrantIndex) => {
-    const instrument = instruments[key];
-    const rhythm = rhythmicPatterns[key];
-
-    rhythm.forEach((relativeSpeed, noteIndex) => {
-      if (relativeSpeed === null) return; // Skip rest
-
-      const duration = `${Math.max(0.125, relativeSpeed)}n`; // Map speed to duration
-      const timing = startTime + quadrantIndex * 1 + noteIndex * timeStep * relativeSpeed;
-
-      setTimeout(() => {
-        instrument.triggerAttackRelease(
-          Tone.Frequency(instrument.note, "midi").toNote(),
-          duration,
-          timing
-        );
-      }, (timing - Tone.now()) * 1000);
-    });
-  });
-}
 
 function setup() {
   createCanvas(400, 400);
+
+  // Initialize Tone.js Synth
+  synth = new Tone.PolySynth().toDestination();
 
   // Create slider for speed control
   createP("Playback Speed:");
@@ -84,19 +27,6 @@ function setup() {
     currentSymmetry = symmetrySelector.value();
     generatePattern(); // Regenerate pattern on change
   });
-
-  // Create scale selection dropdown
-  createP("Select Scale:");
-  scaleSelector = createSelect();
-  scaleSelector.option("F Minor", 0);
-  scaleSelector.option("E Minor", 1);
-  scaleSelector.option("C Major", 2);
-  scaleSelector.changed(() => {
-    const scaleIndex = parseInt(scaleSelector.value());
-    assignScaleToInstruments(scaleIndex);
-  });
-
-  assignScaleToInstruments(2); // Default to C Major
 
   // Setup tiles and generate initial pattern
   cols = width / size;
@@ -146,6 +76,11 @@ class Tile {
 
   highlight() {
     this.highlighted = true;
+  }
+
+  getNote() {
+    let midiNotes = [57, 60, 64, 69]; // A3, C4, E4, A4 (A Minor)
+    return midiNotes[this.type];
   }
 }
 
@@ -377,66 +312,22 @@ function mirrorAndFlipVertically(type) {
   if (type == 3) return 0;
 }
 
+// Play music with tile highlighting
 function mousePressed() {
   if (Tone.context.state !== "running") {
     Tone.start();
   }
 
-  const startTime = Tone.now();
-  const baseTimeStep = 0.5; // Base time step for note spacing
-  const quadrantDelay = 1; // Delay between quadrants
+  let speed = speedSlider.value();
+  let timeStep = 0.4 / speed;
 
-  // Define rhythmic patterns
-  const rhythmicPatterns = {
-    TL: [0.5, 1, 0.25, null, 0.75], // Fast and short, with rests
-    TR: [1, 0.25, 0.75, null, 1.5], // Medium and syncopated
-    BL: [0.25, 0.5, 0.25, null, 1], // Faster rhythm
-    BR: [1.5, null, 1, 0.5, 0.75], // Slower rhythm
-  };
-
-  // Map relative speed to duration (faster notes are shorter)
-  const mapDuration = (relativeSpeed) => {
-    const baseDuration = 0.5; // Base duration for reference
-    return `${Math.max(0.125, baseDuration * relativeSpeed)}n`;
-  };
-
-  // Group tiles into quadrants
-  const quadrants = {
-    TL: tiles.flat().filter((tile) => tile.x < width / 2 && tile.y < height / 2),
-    TR: tiles.flat().filter((tile) => tile.x >= width / 2 && tile.y < height / 2),
-    BL: tiles.flat().filter((tile) => tile.x < width / 2 && tile.y >= height / 2),
-    BR: tiles.flat().filter((tile) => tile.x >= width / 2 && tile.y >= height / 2),
-  };
-
-  // Play notes for each quadrant
-  Object.keys(instruments).forEach((key, quadrantIndex) => {
-    const instrument = instruments[key];
-    const rhythm = rhythmicPatterns[key];
-    const tilesInQuadrant = quadrants[key];
-
-    tilesInQuadrant.forEach((tile, tileIndex) => {
-      const relativeSpeed = rhythm[tileIndex % rhythm.length];
-      if (relativeSpeed === null) return; // Skip rest
-
-      const duration = mapDuration(relativeSpeed); // Map speed to note duration
-      const timing =
-        startTime + quadrantIndex * quadrantDelay + tileIndex * baseTimeStep * relativeSpeed;
-
-      setTimeout(() => {
-        // Highlight the tile
-        tile.highlight();
-
-        // Trigger the note
-        const note = Tone.Frequency(instrument.note, "midi").toNote();
-        instrument.triggerAttackRelease(note, duration, timing);
-
-        // Reset the highlight after a short delay
-        setTimeout(() => {
-          tile.highlighted = false;
-        }, 200); // Adjust duration as needed
-      }, (timing - Tone.now()) * 1000);
-    });
+  tiles.flat().forEach((tile, index) => {
+    setTimeout(() => {
+      tile.highlight();
+      synth.triggerAttackRelease(
+        Tone.Frequency(tile.getNote(), "midi").toNote(),
+        "8n"
+      );
+    }, index * timeStep * 1000);
   });
-
-  console.log("Playing dynamically generated rhythm with varying durations.");
 }
