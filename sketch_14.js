@@ -1,5 +1,5 @@
 let cols, rows;
-let size = 25; // Size of each tile
+let size = 100; // Size of each tile
 let tiles = [];
 let currentSymmetry = "D4"; // Default symmetry type
 let currentTransformation = "None"; // Default transformation
@@ -18,13 +18,13 @@ const scaleNames = [
   "Cmaj7 Arpeggio",
 ];
 
-const scales = [
-  [48, 60, 72, 84, 96, 108, 120], 
-  [48, 50, 52, 55, 57, 60, 62, 64, 67], 
-  [48, 52, 56, 60, 64, 67, 71, 72], 
-  [48, 52, 55, 60, 64, 67, 69, 72], 
-  [48, 55, 60, 67, 71, 72], 
-];
+const scales = {
+  "C Major": [48, 60, 72, 84, 96, 108, 120],
+  "C Major Pentatonic": [48, 50, 52, 55, 57, 60, 62, 64, 67],
+  "Lydian Mode": [48, 52, 56, 60, 64, 67, 71, 72],
+  "Mixolydian Mode": [48, 52, 55, 60, 64, 67, 69, 72],
+  "Cmaj7 Arpeggio": [48, 55, 60, 67, 71, 72],
+};
 
 // Define instruments for each quadrant
 const instruments = {
@@ -57,20 +57,15 @@ function mapChord(rootNote) {
 
 // Introduce dynamic inversions for smoother transitions
 function invertChord(chord, inversionLevel) {
-  // Rotate chord notes based on inversion level
-  const inversion = chord
-    .slice(inversionLevel)
-    .concat(chord.slice(0, inversionLevel).map((note) => note + 12));
+  const inversion = chord.slice(inversionLevel).concat(chord.slice(0, inversionLevel).map((note) => note + 12));
   return inversion;
 }
 
 // Example: Use inversions based on tile type
-function mapChordWithInversion(tileType, tilePosition) {
+function mapChordWithInversion(tileType) {
   const rootNote = mapPitch(tileType);
   const chord = mapChord(rootNote);
-
-  // Determine inversion level based on tile position
-  const inversionLevel = (tilePosition.row + tilePosition.col) % chord.length;
+  const inversionLevel = tileType % 3; // Example inversion logic
   return invertChord(chord, inversionLevel);
 }
 
@@ -201,13 +196,16 @@ function setup() {
   // Create scale selection dropdown
   createP("Select Scale:");
   scaleSelector = createSelect();
-  scaleNames.forEach((name, index) => {
-    scaleSelector.option(name, index); // Populate dropdown with scale names
+  scaleNames.forEach((name) => {
+    scaleSelector.option(name);
   });
-  scaleSelector.selected(2); // Default to "C Major"
+  scaleSelector.selected("C Major"); // Default selection
+
+  // Update current scale based on selection
   scaleSelector.changed(() => {
-    const scaleIndex = parseInt(scaleSelector.value());
-    assignScaleToInstruments(scaleIndex);
+    const selectedScale = scaleSelector.value();
+    currentScale = scales[selectedScale];
+    console.log(`Scale selected: ${selectedScale}`);
   });
 
   // Add a dropdown for play mode
@@ -543,73 +541,55 @@ function switchInstruments(selection) {
   }
 }
 
-function playMusic() {
-  const startTime = Tone.now();
-  const baseTimeStep = 0.6; // Base time step between notes
-  const noteDuration = 0.5; // Note duration for each note
-  const highlightDuration = 200; // Tile highlight duration (in milliseconds)
-  const grandPiano = new Tone.Sampler({
-    urls: {
-      A4: "A4.mp3",
-      C4: "C4.mp3",
-      E4: "E4.mp3",
-    },
-    baseUrl: "https://tonejs.github.io/audio/salamander/",
-  }).toDestination();
+// Ensure global initialization of Grand Piano
+const grandPiano = new Tone.Sampler({
+  urls: {
+    A4: "A4.mp3",
+    C4: "C4.mp3",
+    E4: "E4.mp3",
+  },
+  baseUrl: "https://tonejs.github.io/audio/salamander/",
+}).toDestination();
 
-  // Generate music based on tile patterns and transformations
+function playMusic() {
+  if (Tone.context.state !== "running") {
+    Tone.context.resume();
+  }
+
+  const startTime = Tone.now();
+  const baseTimeStep = 0.6; // Base time step for notes
+  const noteDuration = 0.5; // Duration of each note
+  const highlightDuration = 200; // Highlight duration in ms
+
+  // Iterate through each tile to determine pitch and timing
   tiles.forEach((row, rowIndex) => {
     row.forEach((tile, colIndex) => {
       const motifStartTime = startTime + rowIndex * baseTimeStep + colIndex * 0.2;
 
-      // Map the tile type to a note in the current scale
+      // Determine the pitch based on the tile type and scale
       const noteIndex = tile.type % currentScale.length;
-      const baseNote = currentScale[noteIndex];
+      let pitch = currentScale[noteIndex];
 
-      // Adjust pitch using transformations and patterns
-      let pitch = baseNote;
-      let chord = mapChord(baseNote); // Default chord based on root note
-
+      // Apply transformations
       switch (currentTransformation) {
         case "Inversion":
-          pitch = currentScale[0] + (currentScale[0] - baseNote);
-          chord = mapChord(pitch); // Update chord after inversion
+          pitch = currentScale[0] + (currentScale[0] - pitch);
           break;
         case "Retrograde":
           pitch = currentScale[currentScale.length - 1 - noteIndex];
-          chord = mapChord(pitch); // Update chord after retrograde
           break;
         case "Augmentation":
-          pitch += 12; // Shift an octave up
-          chord = mapChord(pitch); // Update chord after augmentation
-          break;
-        case "Canon":
-        case "Counterpoint":
-          // Handled in layering section below
+          pitch += 12; // Shift an octave higher
           break;
       }
 
-      // Apply dynamic inversion to chords
-      const inversionLevel = (rowIndex + colIndex) % chord.length;
-      chord = invertChord(chord, inversionLevel);
-
-      // Play the chord or single note
+      // Play the note and highlight the corresponding tile
       setTimeout(() => {
-        if (playMode === "Harmony") {
-          chord.forEach((note, index) => {
-            setTimeout(() => {
-              grandPiano.triggerAttackRelease(
-                Tone.Frequency(note, "midi").toNote(),
-                noteDuration
-              );
-            }, index * 200); // Stagger notes within the chord
-          });
-        } else if (playMode === "Melody") {
-          grandPiano.triggerAttackRelease(
-            Tone.Frequency(pitch, "midi").toNote(),
-            noteDuration
-          );
-        }
+        grandPiano.triggerAttackRelease(
+          Tone.Frequency(pitch, "midi").toNote(),
+          noteDuration,
+          motifStartTime
+        );
 
         // Highlight the tile for visual feedback
         tile.highlighted = true;
@@ -620,20 +600,21 @@ function playMusic() {
     });
   });
 
-  // Canon and Counterpoint Layering
+  // Add layers for Canon and Counterpoint transformations
   if (currentTransformation === "Canon" || currentTransformation === "Counterpoint") {
     tiles.forEach((row, rowIndex) => {
       row.forEach((tile, colIndex) => {
         const motifStartTime = startTime + rowIndex * baseTimeStep + colIndex * 0.2;
-        const canonOffset = 0.5; // Delay for canon
-        const counterpointOffset = 7; // Fifth above for counterpoint
+        const canonOffset = 0.5; // Delay for Canon
+        const counterpointInterval = 4; // Third interval for Counterpoint
         const noteIndex = tile.type % currentScale.length;
         const baseNote = currentScale[noteIndex];
 
+        // Determine the secondary note
         const secondaryNote =
           currentTransformation === "Canon"
             ? baseNote
-            : baseNote + counterpointOffset;
+            : baseNote + counterpointInterval;
 
         setTimeout(() => {
           grandPiano.triggerAttackRelease(
@@ -652,7 +633,5 @@ function playMusic() {
     });
   }
 
-  console.log(
-    `Playing with Grand Piano, scale: ${currentScale}, and transformation: ${currentTransformation}`
-  );
+  console.log(`Playing music with ${currentTransformation} transformation and scale: ${currentScale}`);
 }

@@ -57,20 +57,15 @@ function mapChord(rootNote) {
 
 // Introduce dynamic inversions for smoother transitions
 function invertChord(chord, inversionLevel) {
-  // Rotate chord notes based on inversion level
-  const inversion = chord
-    .slice(inversionLevel)
-    .concat(chord.slice(0, inversionLevel).map((note) => note + 12));
+  const inversion = chord.slice(inversionLevel).concat(chord.slice(0, inversionLevel).map((note) => note + 12));
   return inversion;
 }
 
 // Example: Use inversions based on tile type
-function mapChordWithInversion(tileType, tilePosition) {
+function mapChordWithInversion(tileType) {
   const rootNote = mapPitch(tileType);
   const chord = mapChord(rootNote);
-
-  // Determine inversion level based on tile position
-  const inversionLevel = (tilePosition.row + tilePosition.col) % chord.length;
+  const inversionLevel = tileType % 3; // Example inversion logic
   return invertChord(chord, inversionLevel);
 }
 
@@ -557,7 +552,7 @@ function playMusic() {
     baseUrl: "https://tonejs.github.io/audio/salamander/",
   }).toDestination();
 
-  // Generate music based on tile patterns and transformations
+  // Generate a melody or motif based on tile type and transformation
   tiles.forEach((row, rowIndex) => {
     row.forEach((tile, colIndex) => {
       const motifStartTime = startTime + rowIndex * baseTimeStep + colIndex * 0.2;
@@ -568,50 +563,33 @@ function playMusic() {
 
       // Adjust pitch using transformations and patterns
       let pitch = baseNote;
-      let chord = mapChord(baseNote); // Default chord based on root note
-
       switch (currentTransformation) {
         case "Inversion":
-          pitch = currentScale[0] + (currentScale[0] - baseNote);
-          chord = mapChord(pitch); // Update chord after inversion
+          pitch = currentScale[0] - (baseNote - currentScale[0]);
           break;
         case "Retrograde":
           pitch = currentScale[currentScale.length - 1 - noteIndex];
-          chord = mapChord(pitch); // Update chord after retrograde
           break;
         case "Augmentation":
           pitch += 12; // Shift an octave up
-          chord = mapChord(pitch); // Update chord after augmentation
           break;
         case "Canon":
+          // Canon logic handled later
+          break;
         case "Counterpoint":
-          // Handled in layering section below
+          // Add counterpoint logic here
           break;
       }
 
-      // Apply dynamic inversion to chords
-      const inversionLevel = (rowIndex + colIndex) % chord.length;
-      chord = invertChord(chord, inversionLevel);
-
-      // Play the chord or single note
+      // Play the note and highlight the tile
       setTimeout(() => {
-        if (playMode === "Harmony") {
-          chord.forEach((note, index) => {
-            setTimeout(() => {
-              grandPiano.triggerAttackRelease(
-                Tone.Frequency(note, "midi").toNote(),
-                noteDuration
-              );
-            }, index * 200); // Stagger notes within the chord
-          });
-        } else if (playMode === "Melody") {
-          grandPiano.triggerAttackRelease(
-            Tone.Frequency(pitch, "midi").toNote(),
-            noteDuration
-          );
-        }
+        grandPiano.triggerAttackRelease(
+          Tone.Frequency(pitch, "midi").toNote(),
+          noteDuration,
+          motifStartTime
+        );
 
-        // Highlight the tile for visual feedback
+        // Highlight the tile
         tile.highlighted = true;
         setTimeout(() => {
           tile.highlighted = false; // Remove highlight after duration
@@ -625,6 +603,8 @@ function playMusic() {
     tiles.forEach((row, rowIndex) => {
       row.forEach((tile, colIndex) => {
         const motifStartTime = startTime + rowIndex * baseTimeStep + colIndex * 0.2;
+
+        // Add a secondary layer for canon or counterpoint
         const canonOffset = 0.5; // Delay for canon
         const counterpointOffset = 7; // Fifth above for counterpoint
         const noteIndex = tile.type % currentScale.length;
@@ -652,7 +632,5 @@ function playMusic() {
     });
   }
 
-  console.log(
-    `Playing with Grand Piano, scale: ${currentScale}, and transformation: ${currentTransformation}`
-  );
+  console.log(`Playing with Grand Piano and ${currentScale} in ${currentTransformation} transformation.`);
 }
