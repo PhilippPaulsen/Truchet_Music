@@ -161,7 +161,7 @@ function playChordWithTiming(instrument, chord, timing) {
 }
 
 function setup() {
-  createCanvas(640, 640);
+  createCanvas(320, 320);
 
   // Instrument selection dropdown
   createP("Select Instrument:");
@@ -235,7 +235,6 @@ function setup() {
   // Add a dropdown for grid size
   createP("Select Grid Size:");
   sizeSelector = createSelect();
-  sizeSelector.option(160);
   sizeSelector.option(80);
   sizeSelector.option(40);
   sizeSelector.option(20);
