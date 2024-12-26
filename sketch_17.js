@@ -1,5 +1,5 @@
 let cols, rows;
-let size = 50; // Size of each tile
+let size = 25; // Size of each tile
 let tiles = [];
 let currentSymmetry = "D4"; // Default symmetry type
 // D4, C4, D2_s, (D2_d), C2, D1_h, D1_v, (D1_d1, D1_d2), (C1)
@@ -41,7 +41,6 @@ const instruments = {
 function assignScaleToInstruments(scaleIndex) {
   currentScale = scales[scaleIndex]; // Update the current scale
   console.log(`Scale selected: ${scaleNames[scaleIndex]}`);
-}
 
 function mapPitch(tileType) {
   const noteIndex = tileType % currentScale.length; // Cycle through scale notes
@@ -160,7 +159,7 @@ function playChordWithTiming(instrument, chord, timing) {
 }
 
 function setup() {
-  createCanvas(600, 600);
+  createCanvas(800, 800);
 
   // Instrument selection dropdown
   createP("Select Instrument:");
@@ -180,7 +179,6 @@ function setup() {
   symmetrySelector = createSelect();
   symmetrySelector.option("D4");
   symmetrySelector.option("C4");
-  symmetrySelector.option("p4g");
   symmetrySelector.selected(currentSymmetry);
   symmetrySelector.changed(() => {
     currentSymmetry = symmetrySelector.value();
@@ -1278,75 +1276,74 @@ function createSymmetricPattern(symmetryType, motifRatio) {
   //     }
   //     pattern.push(row);
   //   }
+  // } else if (symmetryType === "p4g") {
+  //   let motifPattern = [];
+  //   for (let y = 0; y < motifRows; y++) {
+  //     motifPattern[y] = new Array(motifCols);
+  //   }
 
-} else if (symmetryType === "p4g") {
-  let motifPattern = [];
-  for (let y = 0; y < motifRows; y++) {
-    motifPattern[y] = new Array(motifCols);
-  }
+  //   // Generate the top-left quadrant
+  //   for (let y = 0; y < motifRows / 2; y++) {
+  //     for (let x = 0; x <= y; x++) {
+  //       let type;
+  //       if (x < y) {
+  //         type = floor(random(2)) + 2; // Only type 2 or 3 for below the diagonal
+  //       } else {
+  //         type = floor(random(2)); // Only type 0 or 1 for the diagonal
+  //       }
+  //       motifPattern[y][x] = new Tile(x * size, y * size, type);
+  //     }
+  //   }
 
-  // Generate the top-left quadrant
-  for (let y = 0; y < motifRows / 2; y++) {
-    for (let x = 0; x <= y; x++) {
-      let type;
-      if (x < y) {
-        type = floor(random(2)) + 2; // Only type 2 or 3 for below the diagonal
-      } else {
-        type = floor(random(2)); // Only type 0 or 1 for the diagonal
-      }
-      motifPattern[y][x] = new Tile(x * size, y * size, type);
-    }
-  }
+  //   // Reflect across the main diagonal
+  //   for (let y = 0; y < motifRows / 2; y++) {
+  //     for (let x = 0; x < y; x++) {
+  //       let type = motifPattern[y][x].type;
+  //       let reflectedType = reflectTypeAcrossDiagonal(type);
+  //       motifPattern[x][y] = new Tile(y * size, x * size, reflectedType);
+  //     }
+  //   }
 
-  // Reflect across the main diagonal
-  for (let y = 0; y < motifRows / 2; y++) {
-    for (let x = 0; x < y; x++) {
-      let type = motifPattern[y][x].type;
-      let reflectedType = reflectTypeAcrossDiagonal(type);
-      motifPattern[x][y] = new Tile(y * size, x * size, reflectedType);
-    }
-  }
+  //   // Mirror horizontally to complete top-left quadrant
+  //   for (let y = 0; y < motifRows / 2; y++) {
+  //     for (let x = motifCols / 2; x < motifCols; x++) {
+  //       let type = motifPattern[y][motifCols - x - 1].type;
+  //       let mirroredType = mirrorTypeHorizontally(type);
+  //       motifPattern[y][x] = new Tile(x * size, y * size, mirroredType);
+  //     }
+  //   }
 
-  // Mirror horizontally to complete top-left quadrant
-  for (let y = 0; y < motifRows / 2; y++) {
-    for (let x = motifCols / 2; x < motifCols; x++) {
-      let type = motifPattern[y][motifCols - x - 1].type;
-      let mirroredType = mirrorTypeHorizontally(type);
-      motifPattern[y][x] = new Tile(x * size, y * size, mirroredType);
-    }
-  }
+  //   // Mirror vertically to complete bottom-left quadrant
+  //   for (let y = motifRows / 2; y < motifRows; y++) {
+  //     for (let x = 0; x < motifCols / 2; x++) {
+  //       let type = motifPattern[motifRows - y - 1][x].type;
+  //       let mirroredType = mirrorTypeVertically(type);
+  //       motifPattern[y][x] = new Tile(x * size, y * size, mirroredType);
+  //     }
+  //   }
 
-  // Mirror vertically to complete bottom-left quadrant
-  for (let y = motifRows / 2; y < motifRows; y++) {
-    for (let x = 0; x < motifCols / 2; x++) {
-      let type = motifPattern[motifRows - y - 1][x].type;
-      let mirroredType = mirrorTypeVertically(type);
-      motifPattern[y][x] = new Tile(x * size, y * size, mirroredType);
-    }
-  }
+  //   // Rotate 90 degrees more to fill the bottom-right quadrant
+  //   for (let y = motifRows / 2; y < motifRows; y++) {
+  //     for (let x = motifCols / 2; x < motifCols; x++) {
+  //       let type = motifPattern[motifRows - y - 1][motifCols - x - 1].type;
+  //       let rotatedType = rotateTypeClockwise(rotateTypeClockwise(type));
+  //       motifPattern[y][x] = new Tile(x * size, y * size, rotatedType);
+  //     }
+  //   }
 
-  // Rotate 90 degrees more to fill the bottom-right quadrant
-  for (let y = motifRows / 2; y < motifRows; y++) {
-    for (let x = motifCols / 2; x < motifCols; x++) {
-      let type = motifPattern[motifRows - y - 1][motifCols - x - 1].type;
-      let rotatedType = rotateTypeClockwise(rotateTypeClockwise(type));
-      motifPattern[y][x] = new Tile(x * size, y * size, rotatedType);
-    }
+  //   // Repeat the motif pattern across the entire canvas
+  //   for (let y = 0; y < rows; y++) {
+  //     let row = [];
+  //     for (let x = 0; x < cols; x++) {
+  //       let motifX = x % motifCols;
+  //       let motifY = y % motifRows;
+  //       let motifTile = motifPattern[motifY][motifX];
+  //       row.push(new Tile(x * size, y * size, motifTile.type));
+  //     }
+  //     pattern.push(row);
+  //   }
   }
-
-  // Repeat the motif pattern across the entire canvas
-  for (let y = 0; y < rows; y++) {
-    let row = [];
-    for (let x = 0; x < cols; x++) {
-      let motifX = x % motifCols;
-      let motifY = y % motifRows;
-      let motifTile = motifPattern[motifY][motifX];
-      row.push(new Tile(x * size, y * size, motifTile.type));
-    }
-    pattern.push(row);
-  }
-}
-return pattern;
+  return pattern;
 }
 
 // Helper function to rotate the tile types
