@@ -174,14 +174,23 @@ function setup() {
   let canvas = createCanvas(320, 320);
   canvas.parent('canvas-container'); // Attach canvas to the container in the HTML
 
-  document.getElementById("play-button").addEventListener("click", function () {
-    if (Tone.context.state !== "running") {
-      Tone.context.resume().then(() => {
-        console.log("Audio context resumed");
-        playMusic();
-      });
+  document.getElementById("play-button").addEventListener("click", async function () {
+    const playButton = this;
+  
+    // Explicitly resume the audio context on user interaction
+    if (Tone.context.state !== 'running') {
+      await Tone.context.resume();
+      console.log("Audio context resumed");
+    }
+  
+    // Toggle active state
+    const isPlaying = playButton.classList.toggle("active");
+  
+    // Trigger the music playback or stop functionality
+    if (isPlaying) {
+      playMusic(); // Your function to start music
     } else {
-      playMusic();
+      Tone.Transport.stop(); // Stop the music (example function, replace as needed)
     }
   });
 
