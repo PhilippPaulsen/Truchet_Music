@@ -23,17 +23,17 @@
 
     #controls {
       display: grid;
-      grid-template-columns: auto 1fr; /* Labels and controls */
-      align-items: center; /* Align labels and controls vertically */
-      gap: 10px; /* Space between elements */
-      width: 320px; /* Match canvas width */
-      margin-top: 20px; /* Space below canvas */
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: 10px;
+      width: 320px;
+      margin-top: 20px;
     }
 
     label {
       font-size: 12px;
       font-weight: bold;
-      text-align: left; /* Left-aligned labels */
+      text-align: left;
     }
 
     select, input {
@@ -140,6 +140,29 @@
     <label for="speed">Playback Speed:</label>
     <input id="speed" type="range" min="0.5" max="2" step="0.1" value="1">
   </div>
+
+  <script>
+    // Ensure AudioContext is resumed after user interaction
+    function resumeAudioContext() {
+      if (Tone.context.state !== 'running') {
+        Tone.context.resume().then(() => {
+          console.log("Audio context resumed successfully.");
+        }).catch((error) => {
+          console.error("Failed to resume audio context:", error);
+        });
+      }
+    }
+
+    // Attach audio resume handler to Play button
+    document.getElementById("play-button").addEventListener("click", () => {
+      resumeAudioContext();
+      // Your existing play logic here
+      console.log("Play button clicked.");
+    });
+
+    // Ensure audio context resumes on first interaction with the page
+    document.body.addEventListener("click", resumeAudioContext, { once: true });
+  </script>
 
   <script src="sketch.js"></script>
 </body>
