@@ -24,6 +24,10 @@ const instruments = {
   BR: new Tone.PolySynth().toDestination(),
 };
 
+Tone.getContext().resume().then(() => {
+  console.log('Audio context resumed.');
+});
+
 // Define scale names and scales
 const scaleNames = [
   "C Major",
@@ -182,23 +186,16 @@ function setup() {
     }
   }, { once: true }); // Ensure this runs only once
 
-  document.getElementById("play-button").addEventListener("click", async function () {
-    const playButton = this;
-  
-    // Explicitly resume the audio context on user interaction
-    if (Tone.context.state !== 'running') {
-      await Tone.context.resume();
-      console.log("Audio context resumed");
-    }
-  
-    // Toggle active state
-    const isPlaying = playButton.classList.toggle("active");
-  
-    // Trigger the music playback or stop functionality
-    if (isPlaying) {
-      playMusic(); // Your function to start music
+  document.getElementById("play-button").addEventListener("click", async () => {
+    if (Tone.Transport.state === "started") {
+      Tone.Transport.stop();
+      Tone.Transport.cancel(); // Clears all scheduled events
+      console.log("Music paused and events cleared.");
     } else {
-      Tone.Transport.stop(); // Stop the music (example function, replace as needed)
+      await Tone.start();
+      Tone.Transport.start();
+      console.log("Music started.");
+      playMusic();
     }
   });
 
