@@ -30,8 +30,6 @@ https://philipppaulsen.github.io/Truchet_Music/
 	•	No build process is needed! Just open index.html in your browser.
 3.	Optional: Use a local server for better performance.
 
-#### **6. Usage**
-
 ## **Usage**
 1. Open the app in your browser.
 2. Use the GUI to:
