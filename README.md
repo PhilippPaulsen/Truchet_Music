@@ -20,6 +20,7 @@ https://philipppaulsen.github.io/Truchet_Music/
 6. [Contributing](#contributing)
 7. [License](#license)
 8. [Acknowledgments](#acknowledgments)
+9. [Next Steps](#next-steps)
 
 ## **Installation**
 1. Clone the repository:
@@ -70,4 +71,37 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ## **Acknowledgments**
 - Inspired by the creative coding community.
 - Thanks to [p5.js](https://p5js.org/) and [Tone.js](https://tonejs.github.io/) for their excellent libraries.
+
+## **Next Steps**
+The following features are planned for future development:
+
+1. **Color-to-Tune Mapping**
+   - Assign specific colors to musical notes or chords to enhance the interplay between visuals and music.
+   
+2. **Random Pattern Generation**
+   - Enable the app to randomly generate new patterns while keeping the current configurations of scale, symmetry, and instruments intact.
+
+3. **Auto-Play Mode**
+   - Introduce an Auto-Play mode that continuously generates new patterns and music seamlessly, creating an endless generative experience.
+
+4. **Pause, Stop, and Regenerate Controls**
+   - Add controls for pausing, stopping, and regenerating patterns and music to give users greater control over playback.
+
+5. **Improved User Interface**
+   - Optimize the GUI for better usability and aesthetic appeal, including more intuitive controls and feedback mechanisms.
+
+6. **Advanced Symmetry Options**
+   - Expand the symmetry library with additional complex types and introduce interactive tools to customize symmetry rules.
+
+7. **Pattern Saving and Export**
+   - Allow users to save or export their favorite patterns and musical compositions for later use or sharing.
+
+8. **Accessibility Improvements**
+   - Ensure compatibility with all major browsers and devices, including resolving known issues with Mobile Safari.
+
+9. **Educational Mode**
+   - Introduce a mode for learning about symmetry, scales, and generative music through interactive tutorials.
+
+10. **Community Contributions**
+    - Open up the project for community-contributed features and patterns, enabling a collaborative creative space.
 
