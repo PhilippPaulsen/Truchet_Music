@@ -174,10 +174,10 @@ function setup() {
   let canvas = createCanvas(320, 320);
   canvas.parent('canvas-container'); // Attach canvas to the container in the HTML
 
-  document.getElementById("play-button").addEventListener("click", function () {
+  document.getElementById("play-button").addEventListener("click", () => {
     if (Tone.context.state !== "running") {
-      Tone.context.resume().then(() => {
-        console.log("Audio context resumed");
+      Tone.start().then(() => {
+        console.log("Audio context started");
         playMusic();
       });
     } else {
