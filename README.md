@@ -21,9 +21,17 @@ https://philipppaulsen.github.io/Truchet_Music/
 7. [License](#license)
 8. [Acknowledgments](#acknowledgments)
 
+## **Installation**
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/PhilippPaulsen/Truchet_Music
+   cd Truchet_Music
+2. Open this project.
+	•	No build process is needed! Just open index.html in your browser.
+3.	Optional: Use a local server for better performance.
+
 #### **6. Usage**
 
-```markdown
 ## **Usage**
 1. Open the app in your browser.
 2. Use the GUI to:
