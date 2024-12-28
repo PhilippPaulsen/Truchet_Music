@@ -10,7 +10,6 @@ let currentTransformation = "None"; // Default transformation
 let currentScale = [48, 60, 72, 84, 96, 108, 120]; // Default scale (C Major)
 let motifRatio = 2; // Determines the motif's size
 let playMode = "Melody"; // Default play mode
-let playbackSpeed = 1; // Default playback speed multiplier
 
 
 // GUI Elements
@@ -174,17 +173,6 @@ function setup() {
   let canvas = createCanvas(320, 320);
   canvas.parent('canvas-container'); // Attach canvas to the container in the HTML
 
-  document.getElementById("play-button").addEventListener("click", () => {
-    if (Tone.context.state !== "running") {
-      Tone.start().then(() => {
-        console.log("Audio context started");
-        playMusic();
-      });
-    } else {
-      playMusic();
-    }
-  });
-
   // Link new GUI elements
   document.getElementById('size').addEventListener('change', (e) => {
     size = parseInt(e.target.value, 10); // Update size
@@ -208,8 +196,7 @@ function setup() {
   });
 
   document.getElementById('speed').addEventListener('input', (e) => {
-    playbackSpeed = parseFloat(e.target.value);
-    console.log(`Playback speed set to: ${playbackSpeed}`);
+    playbackSpeed = parseInt(e.target.value, 10); // Update speed value
   });
 
   document.getElementById('transformation').addEventListener('change', (e) => {
@@ -1447,10 +1434,9 @@ function switchInstruments(selection) {
 
 function playMusic() {
   const startTime = Tone.now();
-  const baseTimeStep = 1 / playbackSpeed; // Adjust base time step by playback speed
-  const noteDuration = 0.5 / playbackSpeed; // Adjust note duration by playback speed
-  const highlightDuration = 200 / playbackSpeed; // Adjust highlight duration by playback speed
-
+  const baseTimeStep = 0.6; // Base time step between notes
+  const noteDuration = 0.5; // Note duration for each note
+  const highlightDuration = 200; // Tile highlight duration (in milliseconds)
   const grandPiano = new Tone.Sampler({
     urls: {
       A4: "A4.mp3",
@@ -1463,14 +1449,13 @@ function playMusic() {
   // Generate music based on tile patterns and transformations
   tiles.forEach((row, rowIndex) => {
     row.forEach((tile, colIndex) => {
-      const motifStartTime =
-        startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
+      const motifStartTime = startTime + rowIndex * baseTimeStep + colIndex * 0.2;
 
       // Map the tile type to a note in the current scale
       const noteIndex = tile.type % currentScale.length;
       const baseNote = currentScale[noteIndex];
 
-      // Adjust pitch and chords using transformations and patterns
+      // Adjust pitch using transformations and patterns
       let pitch = baseNote;
       let chord = mapChord(baseNote); // Default chord based on root note
 
@@ -1500,17 +1485,15 @@ function playMusic() {
       // Play the chord or single note
       setTimeout(() => {
         if (playMode === "Harmony") {
-          // Play the chord
           chord.forEach((note, index) => {
             setTimeout(() => {
               grandPiano.triggerAttackRelease(
                 Tone.Frequency(note, "midi").toNote(),
                 noteDuration
               );
-            }, index * (200 / playbackSpeed)); // Stagger notes within the chord
+            }, index * 200); // Stagger notes within the chord
           });
         } else if (playMode === "Melody") {
-          // Play a single note
           grandPiano.triggerAttackRelease(
             Tone.Frequency(pitch, "midi").toNote(),
             noteDuration
@@ -1530,9 +1513,8 @@ function playMusic() {
   if (currentTransformation === "Canon" || currentTransformation === "Counterpoint") {
     tiles.forEach((row, rowIndex) => {
       row.forEach((tile, colIndex) => {
-        const motifStartTime =
-          startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
-        const canonOffset = 0.5 / playbackSpeed; // Adjust delay for canon
+        const motifStartTime = startTime + rowIndex * baseTimeStep + colIndex * 0.2;
+        const canonOffset = 0.5; // Delay for canon
         const counterpointOffset = 7; // Fifth above for counterpoint
         const noteIndex = tile.type % currentScale.length;
         const baseNote = currentScale[noteIndex];
@@ -1560,6 +1542,6 @@ function playMusic() {
   }
 
   console.log(
-    `Playing with Grand Piano, scale: ${currentScale}, transformation: ${currentTransformation}, speed: ${playbackSpeed}`
+    `Playing with Grand Piano, scale: ${currentScale}, and transformation: ${currentTransformation}`
   );
 }

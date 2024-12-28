@@ -1,22 +1,36 @@
-// Initialization and Configuration
 let cols, rows;
-let size = 80; // Size of each tile
-let tiles = []; // Store tile objects
+let size = 20; // Size of each tile
+let tiles = [];
 let currentSymmetry = "D4"; // Default symmetry type
 // D4, C4, D2_s, (D2_d), C2, D1_h, D1_v, (D1_d1, D1_d2), (C1)
 // p1, p2, pm_h, pm_v, (pm_d), pg_h, (pg_v), cm_s, (cm_d), pmm, pmg_h, pmg_v, pgg, cmm, p4, p4m, p4g
 // (missing in brackets)
 let currentTransformation = "None"; // Default transformation
-let currentScale = [48, 60, 72, 84, 96, 108, 120]; // Default scale (C Major)
-let motifRatio = 2; // Determines the motif's size
-let playMode = "Melody"; // Default play mode
-let playbackSpeed = 1; // Default playback speed multiplier
+let currentScale = [48, 50, 53, 57]; // Default to C Major
+let motifRatio = 2; // Determines the size of the repeating motif
+let speedSlider, symmetrySelector, scaleSelector, transformationSelector;
+let instrumentSelector;
+let playMode = "Harmony"; // Default to Harmony
+let sizeSelector; // Dropdown menu for tile size
 
+// Define scale names and scales
+const scaleNames = [
+  "C Major",
+  "C Major Pentatonic",
+  "Lydian Mode",
+  "Mixolydian Mode",
+  "Cmaj7 Arpeggio",
+];
 
-// GUI Elements
-let speedSlider, symmetrySelector, scaleSelector, transformationSelector, sizeSelector, instrumentSelector;
+const scales = [
+  [48, 60, 72, 84, 96, 108, 120], //C Major
+  [48, 50, 52, 55, 57, 60, 62, 64, 67], //C Major Pentatonic
+  [48, 52, 56, 60, 64, 67, 71, 72], //Lydian Mode
+  [48, 52, 55, 60, 64, 67, 69, 72], //Mixolydian Mode
+  [48, 55, 60, 67, 71, 72], //Cmaj7 Arpeggio
+];
 
-// Instruments
+// Define instruments for each quadrant
 const instruments = {
   TL: new Tone.PolySynth().toDestination(),
   TR: new Tone.PolySynth().toDestination(),
@@ -24,34 +38,7 @@ const instruments = {
   BR: new Tone.PolySynth().toDestination(),
 };
 
-// Define scale names and scales
-const scaleNames = [
-  "C Major",
-  "C Minor",
-  "C Major Pentatonic",
-  "C Minor Pentatonic",
-  "C Blues Scale",
-  "C Harmonic Minor",
-  "C Lydian",
-  "C Mixolydian",
-  "C Dorian",
-  "C Phrygian",
-];
-
-const scales = [
-  [48, 60, 72, 84, 96, 108, 120], // C Major
-  [48, 51, 60, 63, 72, 75, 84],  // C Minor
-  [48, 50, 52, 55, 57, 60, 62],  // C Major Pentatonic
-  [48, 51, 53, 55, 58, 60, 63],  // C Minor Pentatonic
-  [48, 51, 54, 55, 58, 60, 63],  // C Blues Scale
-  [48, 51, 54, 60, 64, 67, 72],  // C Harmonic Minor
-  [48, 52, 56, 60, 64, 67, 71],  // C Lydian
-  [48, 52, 55, 60, 64, 67, 69],  // C Mixolydian
-  [48, 50, 53, 60, 62, 67, 69],  // C Dorian
-  [48, 49, 53, 60, 63, 67, 72],  // C Phrygian
-];
-
-// Helper Functions
+// Update current scale
 function assignScaleToInstruments(scaleIndex) {
   currentScale = scales[scaleIndex]; // Update the current scale
   console.log(`Scale selected: ${scaleNames[scaleIndex]}`);
@@ -72,6 +59,7 @@ function mapChord(rootNote) {
   return [rootNote, third, fifth, octave];
 }
 
+// Introduce dynamic inversions for smoother transitions
 function invertChord(chord, inversionLevel) {
   // Rotate chord notes based on inversion level
   const inversion = chord
@@ -80,6 +68,7 @@ function invertChord(chord, inversionLevel) {
   return inversion;
 }
 
+// Example: Use inversions based on tile type
 function mapChordWithInversion(tileType, tilePosition) {
   const rootNote = mapPitch(tileType);
   const chord = mapChord(rootNote);
@@ -167,60 +156,119 @@ function playChordWithTiming(instrument, chord, timing) {
       }, (timing - Tone.now()) * 1000);
     });
   });
+
+  console.log(`Playing in ${playMode} mode based on tile patterns.`);
 }
 
 function setup() {
-  // Create the canvas and place it in the container
-  let canvas = createCanvas(320, 320);
-  canvas.parent('canvas-container'); // Attach canvas to the container in the HTML
+  createCanvas(640, 640);
 
-  document.getElementById("play-button").addEventListener("click", () => {
-    if (Tone.context.state !== "running") {
-      Tone.start().then(() => {
-        console.log("Audio context started");
-        playMusic();
-      });
-    } else {
-      playMusic();
-    }
+  // Instrument selection dropdown
+  createP("Select Instrument:");
+  instrumentSelector = createSelect();
+  instrumentSelector.option("Grand Piano and Organ");
+  instrumentSelector.option("Default Synths");
+  instrumentSelector.changed(() => {
+    switchInstruments(instrumentSelector.value());
   });
 
-  // Link new GUI elements
-  document.getElementById('size').addEventListener('change', (e) => {
-    size = parseInt(e.target.value, 10); // Update size
-    cols = width / size;
-    rows = height / size;
-    generatePattern(); // Regenerate the pattern with the new size
+  // Create slider for speed control
+  createP("Playback Speed:");
+  speedSlider = createSlider(1, 80, 1, 1);
+
+  // Create symmetry selection dropdown
+  createP("Select Symmetry:");
+  symmetrySelector = createSelect();
+  symmetrySelector.option("D4");
+  symmetrySelector.option("C4");
+  symmetrySelector.option("D2_s");
+  symmetrySelector.option("C2");
+  symmetrySelector.option("D1_h");
+  symmetrySelector.option("D1_v");
+  symmetrySelector.option("p1");
+  symmetrySelector.option("p2");
+  symmetrySelector.option("pm_h");
+  symmetrySelector.option("pm_v");
+  symmetrySelector.option("pg_h");
+  symmetrySelector.option("cm_s");
+  symmetrySelector.option("pmm");
+  symmetrySelector.option("pmg_h");
+  symmetrySelector.option("pmg_v");
+  symmetrySelector.option("pgg");
+  symmetrySelector.option("cmm");
+  symmetrySelector.option("p4");
+  symmetrySelector.option("p4m");
+  symmetrySelector.option("p4g");
+  symmetrySelector.selected(currentSymmetry);
+  symmetrySelector.changed(() => {
+    currentSymmetry = symmetrySelector.value();
+    generatePattern(); // Regenerate the pattern on change
   });
 
-  document.getElementById('symmetry').addEventListener('change', (e) => {
-    currentSymmetry = e.target.value;
-    generatePattern(); // Update pattern based on symmetry
+  // Create transformation selection dropdown
+  createP("Select Transformation:");
+  transformationSelector = createSelect();
+  transformationSelector.option("None");
+  transformationSelector.option("Inversion");
+  transformationSelector.option("Retrograde");
+  transformationSelector.option("Augmentation");
+  transformationSelector.option("Canon");
+  transformationSelector.option("Counterpoint");
+  transformationSelector.selected(currentTransformation);
+  transformationSelector.changed(() => {
+    currentTransformation = transformationSelector.value();
+    applyTransformation(currentTransformation);
   });
 
-  document.getElementById('instrument').addEventListener('change', (e) => {
-    switchInstruments(e.target.value); // Connect instrument selector
+  // Create scale selection dropdown
+  createP("Select Scale:");
+  scaleSelector = createSelect();
+  scaleNames.forEach((name, index) => {
+    scaleSelector.option(name, index); // Populate dropdown with scale names
+  });
+  scaleSelector.selected(2); // Default to "C Major"
+  scaleSelector.changed(() => {
+    const scaleIndex = parseInt(scaleSelector.value());
+    assignScaleToInstruments(scaleIndex);
   });
 
-  document.getElementById('scale').addEventListener('change', (e) => {
-    const scaleIndex = e.target.selectedIndex;
-    assignScaleToInstruments(scaleIndex); // Update scale
+  // Add a dropdown for grid size
+  createP("Select Grid Size:");
+  sizeSelector = createSelect();
+  sizeSelector.option(160);
+  sizeSelector.option(80);
+  sizeSelector.option(40);
+  sizeSelector.option(20);
+  sizeSelector.option(10);
+  sizeSelector.option(5);
+  sizeSelector.selected(size); // Default to current size
+  sizeSelector.changed(() => {
+    size = parseInt(sizeSelector.value()); // Update size
+    cols = width / size; // Recalculate cols
+    rows = height / size; // Recalculate rows
+    generatePattern(); // Regenerate the pattern
+    console.log(`Grid size set to: ${size}`);
   });
 
-  document.getElementById('speed').addEventListener('input', (e) => {
-    playbackSpeed = parseFloat(e.target.value);
-    console.log(`Playback speed set to: ${playbackSpeed}`);
+  // Add a dropdown for play mode
+  createP("Select Play Mode:");
+  let modeSelector = createSelect();
+  modeSelector.option("Harmony (Chords)");
+  modeSelector.option("Melody (Linear)");
+  modeSelector.selected("Harmony (Chords)");
+  modeSelector.changed(() => {
+    playMode = modeSelector.value().includes("Harmony") ? "Harmony" : "Melody";
+    console.log(`Play mode set to: ${playMode}`);
   });
 
-  document.getElementById('transformation').addEventListener('change', (e) => {
-    currentTransformation = e.target.value; // Update transformation
-    applyTransformation(currentTransformation); // Apply the selected transformation
-  });
+  // Create the "Play" button
+  createP("Play Experiment:");
+  let playButton = createButton("Play");
+  playButton.mousePressed(playMusic);
 
-  // Initialize pattern and settings
+  assignScaleToInstruments(2); // Default to C Major
   cols = width / size;
   rows = height / size;
-  assignScaleToInstruments(0); // Default to the first scale
   generatePattern(); // Generate the initial pattern
 }
 
@@ -272,38 +320,30 @@ function generatePattern() {
 
 // Apply Transformation
 function applyTransformation(transformation) {
-  if (transformation === "None") return; // No transformation to apply
+  if (transformation === "None") return;
 
   tiles = tiles.map((row) =>
     row.map((tile) => {
       let newType = tile.type;
 
-      switch (transformation) {
-        case "Inversion":
-          newType = (3 - tile.type) % 4; // Invert the tile type
-          break;
-        case "Retrograde":
-          return new Tile(width - tile.x - size, tile.y, tile.type);
-        case "Augmentation":
-          newType = (tile.type + 1) % 4; // Shift tile type cyclically
-          break;
-        case "Canon":
-          // Apply Canon transformation logic here if applicable
-          break;
-        case "Counterpoint":
-          // Apply Counterpoint transformation logic here if applicable
-          break;
+      if (transformation === "Inversion") {
+        newType = (3 - tile.type) % 4;
+      } else if (transformation === "Retrograde") {
+        return new Tile(
+          width - tile.x - size,
+          tile.y,
+          tile.type
+        );
+      } else if (transformation === "Augmentation") {
+        newType = (tile.type + 1) % 4;
       }
 
-      return new Tile(tile.x, tile.y, newType); // Return transformed tile
+      return new Tile(tile.x, tile.y, newType);
     })
   );
 
   console.log(`Transformation applied: ${transformation}`);
 }
-
-// BEGINNING OF CREATE SYMMETRIC PATTERN // DO NOT TOUCH !!!
-
 
 function createSymmetricPattern(symmetryType, motifRatio) {
   let pattern = [];
@@ -1432,9 +1472,6 @@ function mirrorAndFlipVertically(type) {
   if (type == 3) return 0;
 }
 
-// END OF HELPER FUNCTIONS // DO NOT TOUCH !!!
-
-
 function switchInstruments(selection) {
   if (selection === "Grand Piano and Organ") {
     instruments.TL = new Tone.Sampler({ urls: { A4: "A4.mp3", C4: "C4.mp3" } }).toDestination();
@@ -1447,10 +1484,9 @@ function switchInstruments(selection) {
 
 function playMusic() {
   const startTime = Tone.now();
-  const baseTimeStep = 1 / playbackSpeed; // Adjust base time step by playback speed
-  const noteDuration = 0.5 / playbackSpeed; // Adjust note duration by playback speed
-  const highlightDuration = 200 / playbackSpeed; // Adjust highlight duration by playback speed
-
+  const baseTimeStep = 0.6; // Base time step between notes
+  const noteDuration = 0.5; // Note duration for each note
+  const highlightDuration = 200; // Tile highlight duration (in milliseconds)
   const grandPiano = new Tone.Sampler({
     urls: {
       A4: "A4.mp3",
@@ -1463,14 +1499,13 @@ function playMusic() {
   // Generate music based on tile patterns and transformations
   tiles.forEach((row, rowIndex) => {
     row.forEach((tile, colIndex) => {
-      const motifStartTime =
-        startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
+      const motifStartTime = startTime + rowIndex * baseTimeStep + colIndex * 0.2;
 
       // Map the tile type to a note in the current scale
       const noteIndex = tile.type % currentScale.length;
       const baseNote = currentScale[noteIndex];
 
-      // Adjust pitch and chords using transformations and patterns
+      // Adjust pitch using transformations and patterns
       let pitch = baseNote;
       let chord = mapChord(baseNote); // Default chord based on root note
 
@@ -1500,17 +1535,15 @@ function playMusic() {
       // Play the chord or single note
       setTimeout(() => {
         if (playMode === "Harmony") {
-          // Play the chord
           chord.forEach((note, index) => {
             setTimeout(() => {
               grandPiano.triggerAttackRelease(
                 Tone.Frequency(note, "midi").toNote(),
                 noteDuration
               );
-            }, index * (200 / playbackSpeed)); // Stagger notes within the chord
+            }, index * 200); // Stagger notes within the chord
           });
         } else if (playMode === "Melody") {
-          // Play a single note
           grandPiano.triggerAttackRelease(
             Tone.Frequency(pitch, "midi").toNote(),
             noteDuration
@@ -1530,9 +1563,8 @@ function playMusic() {
   if (currentTransformation === "Canon" || currentTransformation === "Counterpoint") {
     tiles.forEach((row, rowIndex) => {
       row.forEach((tile, colIndex) => {
-        const motifStartTime =
-          startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
-        const canonOffset = 0.5 / playbackSpeed; // Adjust delay for canon
+        const motifStartTime = startTime + rowIndex * baseTimeStep + colIndex * 0.2;
+        const canonOffset = 0.5; // Delay for canon
         const counterpointOffset = 7; // Fifth above for counterpoint
         const noteIndex = tile.type % currentScale.length;
         const baseNote = currentScale[noteIndex];
@@ -1560,6 +1592,6 @@ function playMusic() {
   }
 
   console.log(
-    `Playing with Grand Piano, scale: ${currentScale}, transformation: ${currentTransformation}, speed: ${playbackSpeed}`
+    `Playing with Grand Piano, scale: ${currentScale}, and transformation: ${currentTransformation}`
   );
 }
