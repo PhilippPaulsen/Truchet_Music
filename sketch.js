@@ -1672,4 +1672,3 @@ function mirrorAndFlipVertically(type) {
 }
 
 // END OF HELPER FUNCTIONS // DO NOT TOUCH !!!
-
