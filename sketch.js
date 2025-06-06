@@ -10,11 +10,19 @@ let currentTransformation = "None"; // Default transformation
 let currentScale = [48, 60, 72, 84, 96, 108, 120]; // Default scale (C Major)
 let motifRatio = 2; // Determines the motif's size
 let playMode = "Melody"; // Default play mode
+
 let playbackSpeed = 1; // Default playback speed multiplier
+// Track whether music is currently playing
+let isPlaying = false;
 
 
 // GUI Elements
 let speedSlider, symmetrySelector, scaleSelector, transformationSelector, sizeSelector, instrumentSelector;
+
+// Remove any old DOM variable "scale" to avoid p5.js collision
+if (window.scale && typeof window.scale !== "function") {
+  try { delete window.scale; } catch { window.scale = undefined; }
+}
 
 // Instruments
 const instruments = {
@@ -23,10 +31,24 @@ const instruments = {
   BL: new Tone.PolySynth().toDestination(),
   BR: new Tone.PolySynth().toDestination(),
 };
-
 Tone.getContext().resume().then(() => {
   console.log('Audio context resumed.');
 });
+
+// --- recorder for audio export ---
+const recorder = new Tone.Recorder();
+
+/* ---------- einmalig laden, OHNE E4.mp3 (404 Fehler) ------------ */
+let grandPianoReady = false;
+const grandPiano = new Tone.Sampler({
+  urls : { A4:"A4.mp3", C4:"C4.mp3" },      // E4 entfernt
+  baseUrl: "https://tonejs.github.io/audio/salamander/",
+  onload : () => { grandPianoReady = true; console.log("Grand Piano ready"); }
+}).toDestination();
+// route sampler output into the recorder
+grandPiano.connect(recorder);
+// also capture everything that reaches the master output
+Tone.Destination.connect(recorder);
 
 // Define scale names and scales
 const scaleNames = [
@@ -54,6 +76,112 @@ const scales = [
   [48, 50, 53, 60, 62, 67, 69],  // C Dorian
   [48, 49, 53, 60, 63, 67, 72],  // C Phrygian
 ];
+
+// ───── Export helpers ─────
+// return an object with the most relevant parameters
+function currentSettings(){
+  return {
+    symmetry      : currentSymmetry,
+    transformation: currentTransformation,
+    scale         : scaleNames[scales.findIndex(s => s === currentScale)] || "custom",
+    tileSize      : size,
+    motifRatio,
+    playMode,
+    speed         : playbackSpeed
+  };
+}
+
+// turn the above object into a short, filename‑safe slug, e.g.  "D4_None_CMajor_sz80_mr2_sp1"
+function settingsSlug(){
+  const s = currentSettings();
+  return `${s.symmetry}_${s.transformation}_${s.scale.replace(/\s+/g,'')}`
+       + `_sz${s.tileSize}_mr${s.motifRatio}_sp${s.speed}`;
+}
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);   // required for Firefox
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  }, 0);
+}
+
+function exportPatternPNG(){
+  const ts  = new Date().toISOString().replace(/[:.]/g,'-');
+  const tag = settingsSlug();
+  saveCanvas(`pattern-${tag}-${ts}`, 'png');
+}
+
+// Capture a fresh audio rendering and return it as a Blob
+async function recordCurrentAudio() {
+  if (!grandPianoReady) {
+    console.warn("⚠️ Sampler not ready – aborting audio capture.");
+    return null;
+  }
+  // estimate playback length (same formula as in exportAudio)
+  const totalDuration =
+    ((rows - 1) * (1 / playbackSpeed)) +
+    ((cols - 1) * (0.2 / playbackSpeed)) + 1;
+
+  await recorder.start();
+  playMusic();
+  await new Promise(r => setTimeout(r, totalDuration * 1000));
+  return await recorder.stop();
+}
+
+// Export a fresh audio rendering of the current pattern as .wav
+async function exportAudio() {
+  if (!grandPianoReady) {
+    console.warn("⚠️ Sampler not ready – aborting export.");
+    return;
+  }
+
+  const btn = document.getElementById('btnExportAudio');
+  if (btn) btn.disabled = true;          // visual feedback while recording
+
+  const wavBlob = await recordCurrentAudio();
+
+  if (btn) btn.disabled = false;
+
+  if (wavBlob && wavBlob.size) {
+    const ts  = new Date().toISOString().replace(/[:.]/g,'-');
+    const tag = settingsSlug();
+    downloadBlob(wavBlob, `truchet-${tag}-${ts}.wav`);
+    console.log(`✅ Audio exported (${(wavBlob.size/1024).toFixed(1)} KB)`);
+  } else {
+    console.warn("⚠️ Recorder returned an empty Blob – no file saved.");
+    alert("Die Aufnahme enthielt keine Daten – bitte versuch es erneut.");
+  }
+}
+
+// Export both PNG and WAV as a ZIP bundle
+async function exportBundle() {
+  const [pngBlob, wavBlob] = await Promise.all([
+    new Promise(res => canvas.toBlob(res, 'image/png')),
+    recordCurrentAudio()
+  ]);
+
+  if (!pngBlob || !wavBlob) {
+    alert("Export fehlgeschlagen – bitte erneut versuchen.");
+    return;
+  }
+
+  const zip = new JSZip();
+  const ts  = new Date().toISOString().replace(/[:.]/g, '-');
+  const tag = settingsSlug();
+  zip.file(`pattern-${tag}-${ts}.png`, pngBlob);
+  zip.file(`audio-${tag}-${ts}.wav`,   wavBlob);
+  // human‑readable metadata
+  zip.file(`settings-${ts}.json`, JSON.stringify(currentSettings(), null, 2));
+  const zipBlob = await zip.generateAsync({type:'blob'});
+  downloadBlob(zipBlob, `truchet_bundle_${tag}_${ts}.zip`);
+}
+// ─────────────────────────
 
 // Helper Functions
 function assignScaleToInstruments(scaleIndex) {
@@ -93,84 +221,127 @@ function mapChordWithInversion(tileType, tilePosition) {
   return invertChord(chord, inversionLevel);
 }
 
-function playMusic() {
-  const startTime = Tone.now();
-  const baseTimeStep = 0.5; // Base time step for note spacing
-  const quadrantDelay = 1; // Delay between quadrants
+let timeoutIds = []; // Array to store timeout IDs
 
-function playChordWithTiming(instrument, chord, timing) {
-  chord.forEach((note, index) => {
-    setTimeout(() => {
-      instrument.triggerAttackRelease(
-        Tone.Frequency(note, "midi").toNote(),
-        "0.5"
-      );
-    }, index * 200); // Evenly spaced
-  });
+function clearAllTimeouts() {
+  // Clear all scheduled timeouts
+  timeoutIds.forEach((id) => clearTimeout(id));
+  timeoutIds = [];
 }
 
-  // Group tiles into quadrants
-  const quadrants = {
-    TL: tiles.flat().filter((tile) => tile.x < width / 2 && tile.y < height / 2),
-    TR: tiles.flat().filter((tile) => tile.x >= width / 2 && tile.y < height / 2),
-    BL: tiles.flat().filter((tile) => tile.x < width / 2 && tile.y >= height / 2),
-    BR: tiles.flat().filter((tile) => tile.x >= width / 2 && tile.y >= height / 2),
-  };
+function playMusic() {
+  if (!grandPianoReady) {
+    console.warn("Sampler lädt noch …");
+    return;
+  }
+  clearAllTimeouts();      // alte geplante Events entfernen
+  isPlaying = true;
+  const startTime = Tone.now();
+  const baseTimeStep = 1 / playbackSpeed; // Adjust base time step by playback speed
+  const noteDuration = 0.5 / playbackSpeed; // Adjust note duration by playback speed
+  const highlightDuration = 200 / playbackSpeed; // Adjust highlight duration by playback speed
 
-  function stopMusic() {
-    Object.values(instruments).forEach((instrument) => {
-      if (instrument instanceof Tone.PolySynth || instrument instanceof Tone.Sampler) {
-        instrument.releaseAll(); // Stop all notes
-      } else {
-        instrument.dispose(); // Ensure synth is disposed properly
+  // Use the global grandPiano sampler
+  tiles.forEach((row, rowIndex) => {
+    row.forEach((tile, colIndex) => {
+      const motifStartTime =
+        startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
+
+      // Map the tile type to a note in the current scale
+      const noteIndex = tile.type % currentScale.length;
+      const baseNote = currentScale[noteIndex];
+
+      // Adjust pitch and chords using transformations and patterns
+      let pitch = baseNote;
+      let chord = mapChord(baseNote); // Default chord based on root note
+
+      switch (currentTransformation) {
+        case "Inversion":
+          pitch = currentScale[0] + (currentScale[0] - baseNote);
+          chord = mapChord(pitch); // Update chord after inversion
+          break;
+        case "Retrograde":
+          pitch = currentScale[currentScale.length - 1 - noteIndex];
+          chord = mapChord(pitch); // Update chord after retrograde
+          break;
+        case "Augmentation":
+          pitch += 12; // Shift an octave up
+          chord = mapChord(pitch); // Update chord after augmentation
+          break;
+        case "Canon":
+        case "Counterpoint":
+          // Handled in layering section below
+          break;
       }
+
+      // Apply dynamic inversion to chords
+      const inversionLevel = (rowIndex + colIndex) % chord.length;
+      chord = invertChord(chord, inversionLevel);
+
+      // Play the chord or single note
+      const h = setTimeout(() => {
+        if (playMode === "Harmony") {
+          // Play the chord
+          chord.forEach((note, index) => {
+            setTimeout(() => {
+              grandPiano.triggerAttackRelease(
+                Tone.Frequency(note, "midi").toNote(),
+                noteDuration
+              );
+            }, index * (200 / playbackSpeed)); // Stagger notes within the chord
+          });
+        } else if (playMode === "Melody") {
+          // Play a single note
+          grandPiano.triggerAttackRelease(
+            Tone.Frequency(pitch, "midi").toNote(),
+            noteDuration
+          );
+        }
+
+        // Highlight the tile for visual feedback
+        tile.highlighted = true;
+        setTimeout(() => {
+          tile.highlighted = false; // Remove highlight after duration
+        }, highlightDuration);
+      }, (motifStartTime - Tone.now()) * 1000);
+      timeoutIds.push(h);
+    });
+  });
+
+  // Canon and Counterpoint Layering
+  if (currentTransformation === "Canon" || currentTransformation === "Counterpoint") {
+    tiles.forEach((row, rowIndex) => {
+      row.forEach((tile, colIndex) => {
+        const motifStartTime =
+          startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
+        const canonOffset = 0.5 / playbackSpeed; // Adjust delay for canon
+        const counterpointOffset = 7; // Fifth above for counterpoint
+        const noteIndex = tile.type % currentScale.length;
+        const baseNote = currentScale[noteIndex];
+        const secondaryNote =
+          currentTransformation === "Canon"
+            ? baseNote
+            : baseNote + counterpointOffset;
+        const h2 = setTimeout(() => {
+          grandPiano.triggerAttackRelease(
+            Tone.Frequency(secondaryNote, "midi").toNote(),
+            noteDuration,
+            motifStartTime + canonOffset
+          );
+          // Highlight the tile for the secondary melody
+          tile.highlighted = true;
+          setTimeout(() => {
+            tile.highlighted = false;
+          }, highlightDuration);
+        }, (motifStartTime + canonOffset - Tone.now()) * 1000);
+        timeoutIds.push(h2);
+      });
     });
   }
 
-  Object.keys(instruments).forEach((key, quadrantIndex) => {
-    const instrument = instruments[key];
-    const tilesInQuadrant = quadrants[key];
-
-    tilesInQuadrant.forEach((tile, tileIndex) => {
-      const timing =
-        startTime + quadrantIndex * quadrantDelay + tileIndex * baseTimeStep;
-
-      setTimeout(() => {
-        // Highlight the tile
-        tile.highlight();
-
-        if (playMode === "Harmony") {
-          instrument.triggerAttackRelease(
-            chord.map((note) => Tone.Frequency(note, "midi").toNote()),
-            "0.05",
-            timing
-          );
-        } else if (playMode === "Melody") {
-          // Generate a wide melodic range dynamically based on tiles
-          const melody = baseMelodyPattern.map((note, index) => {
-            const octaveOffset = Math.floor(tileIndex / 4) * 12; // Change octave every 4 notes
-            return note + octaveOffset;
-          });
-        
-          melody.forEach((note, noteIndex) => {
-            const noteStartTime = timing + noteIndex * baseTimeStep; // Sequential timing
-            setTimeout(() => {
-              instrument.triggerAttackRelease(
-                Tone.Frequency(note, "midi").toNote(),
-                noteDuration,
-                noteStartTime
-              );
-            }, (noteStartTime - Tone.now()) * 1000);
-          });
-        }
-
-        // Reset the highlight after a short duration
-        setTimeout(() => {
-          tile.highlighted = false;
-        }, 500);
-      }, (timing - Tone.now()) * 1000);
-    });
-  });
+  console.log(
+    `Playing with Grand Piano, scale: ${currentScale}, transformation: ${currentTransformation}, speed: ${playbackSpeed}`
+  );
 }
 
 function setup() {
@@ -216,7 +387,8 @@ function setup() {
     switchInstruments(e.target.value); // Connect instrument selector
   });
 
-  document.getElementById('scale').addEventListener('change', (e) => {
+  // CHANGED: Use scale-select instead of scale
+  document.getElementById('scale-select').addEventListener('change', (e) => {
     const scaleIndex = e.target.selectedIndex;
     assignScaleToInstruments(scaleIndex); // Update scale
   });
@@ -230,6 +402,20 @@ function setup() {
     currentTransformation = e.target.value; // Update transformation
     applyTransformation(currentTransformation); // Apply the selected transformation
   });
+  // Transport/Regenerate Buttons anschließen
+  document.getElementById("btnPause").addEventListener("click", handlePause);
+  document.getElementById("btnStop").addEventListener("click", handleStop);
+  document.getElementById("btnRegenerate").addEventListener("click", handleRegenerate);
+
+  // Export Pattern and Audio Buttons (only if the buttons exist in the DOM)
+  const btnExportPattern = document.getElementById('btnExportPattern');
+  if (btnExportPattern) btnExportPattern.addEventListener('click', exportPatternPNG);
+
+  const btnExportAudio = document.getElementById('btnExportAudio');
+  if (btnExportAudio) btnExportAudio.addEventListener('click', exportAudio);
+
+  const btnExportBundle = document.getElementById('btnExportBundle');
+  if (btnExportBundle) btnExportBundle.addEventListener('click', exportBundle);
 
   // Initialize pattern and settings
   cols = width / size;
@@ -247,7 +433,43 @@ function draw() {
   }
 }
 
-// Tile Class
+// ───── Transport/Regenerate Handlers ─────
+function handlePause() {
+  if (isPlaying) {
+    // Pause current playback
+    Tone.Transport.pause();
+    clearAllTimeouts();
+    isPlaying = false;
+    console.log("Music paused.");
+  } else {
+    // Resume playback
+    Tone.Transport.start();
+    isPlaying = true;
+    console.log("Music resumed.");
+  }
+}
+
+function handleStop() {
+  // Stop everything and reset
+  Tone.Transport.stop();
+  Tone.Transport.cancel();
+  clearAllTimeouts();
+  isPlaying = false;
+  console.log("Music stopped.");
+}
+
+function handleRegenerate() {
+  // Create a fresh pattern WITHOUT restarting playback
+  Tone.Transport.stop();
+  Tone.Transport.cancel();
+  clearAllTimeouts();
+  isPlaying = false;
+  generatePattern();
+  console.log("Pattern regenerated.");
+}
+// ─────────────────────────────────────────
+
+// ─────────────────── Tile class ────────────────────
 class Tile {
   constructor(x, y, type) {
     this.x = x;
@@ -257,19 +479,23 @@ class Tile {
   }
 
   display() {
-    let colors = this.highlighted
-      ? ["#FF6347", "#4682B4", "#32CD32", "#FFD700"] // Highlight colors
-      : ["#000000", "#000000", "#000000", "#000000"]; // Default colors
+    // default colours: black tiles, highlight with colour
+    const colors = this.highlighted
+      ? ["#FF6347", "#4682B4", "#32CD32", "#FFD700"] // highlight colours
+      : ["#000000", "#000000", "#000000", "#000000"]; // default black
+
     fill(colors[this.type]);
     push();
     translate(this.x, this.y);
     beginShape();
-    if (this.type === 0) vertex(size, 0), vertex(size, size), vertex(0, size);
-    if (this.type === 1) vertex(size, 0), vertex(0, 0), vertex(0, size);
-    if (this.type === 2) vertex(size, size), vertex(0, 0), vertex(0, size);
-    if (this.type === 3) vertex(size, size), vertex(0, 0), vertex(size, 0);
+    if (this.type === 0) { vertex(size, 0); vertex(size, size); vertex(0, size); }
+    if (this.type === 1) { vertex(size, 0); vertex(0, 0); vertex(0, size); }
+    if (this.type === 2) { vertex(size, size); vertex(0, 0); vertex(0, size); }
+    if (this.type === 3) { vertex(size, size); vertex(0, 0); vertex(size, 0); }
     endShape(CLOSE);
     pop();
+
+    // reset highlight each frame; draw() sets it just before displaying
     this.highlighted = false;
   }
 
@@ -277,6 +503,7 @@ class Tile {
     this.highlighted = true;
   }
 }
+// ────────────────────────────────────────────────────
 
 // Generate Symmetric Pattern
 function generatePattern() {
@@ -373,7 +600,7 @@ function createSymmetricPattern(symmetryType, motifRatio) {
     // Create the bottom-left quadrant by mirroring the top-left quadrant vertically
     for (let y = 0; y < rows / 2; y++) {
       let bottomRow = [];
-      for (let x = 0; x < cols / 2; x++) {
+      for (let x =  0; x < cols / 2; x++) {
         let type = pattern[y][x].type;
         bottomRow.push(
           new Tile(x * size, (rows - y - 1) * size, mirrorTypeVertically(type))
@@ -433,8 +660,8 @@ function createSymmetricPattern(symmetryType, motifRatio) {
 
     // Create the bottom-right quadrant by rotating the top-right quadrant 90 degrees clockwise
     for (let y = 0; y < rows / 2; y++) {
-      for (let x = 0; x < cols / 2; x++) {
-        let type = pattern[x][cols - y - 1].type;
+      for (let x = 0, x2 = cols - 1; x < cols / 2; x++, x2--) {
+        let type = pattern[x2][cols - y - 1].type;
         let newType = rotateTypeClockwise(type);
         pattern[rows - y - 1][cols - x - 1] = new Tile(
           (cols - x - 1) * size,
@@ -604,7 +831,7 @@ function createSymmetricPattern(symmetryType, motifRatio) {
     // Repeat the motif pattern across the entire canvas
     for (let y = 0; y < rows; y++) {
       let row = [];
-      for (let x = 0; x < cols; x++) {
+      for (let x = 0, x2 = cols - 1; x < cols; x++, x2--) {
         let motifX = x % motifCols;
         let motifY = y % motifRows;
         let motifTile = motifPattern[motifY][motifX];
@@ -665,11 +892,10 @@ function createSymmetricPattern(symmetryType, motifRatio) {
 
     // Create the right half of the motif by mirroring the left half horizontally
     for (let y = 0; y < motifRows; y++) {
-      for (let x = 0; x < motifCols / 2; x++) {
+      for (let x = 0, x2 = motifCols - 1; x < motifCols / 2; x++, x2--) {
         let type = motifPattern[y][x].type;
         let newType = mirrorTypeHorizontally(type);
-        let newX = motifCols - x - 1;
-        motifPattern[y][newX] = new Tile(newX * size, y * size, newType);
+        motifPattern[y][x2] = new Tile(x2 * size, y * size, newType);
       }
     }
 
@@ -1029,7 +1255,7 @@ function createSymmetricPattern(symmetryType, motifRatio) {
     }
 
     // Generate the top-left quadrant of the motif randomly
-    for (let y = 0; y < motifRows / 2; y++) {
+    for (let y = 0; y < motifRows; y++) {
       for (let x = 0; x < motifCols / 2; x++) {
         let type = floor(random(4)); // Random type for the top-left quadrant
         motifPattern[y][x] = new Tile(x * size, y * size, type);
@@ -1099,7 +1325,7 @@ function createSymmetricPattern(symmetryType, motifRatio) {
     }
 
     // Generate the top-left quadrant of the motif randomly
-    for (let y = 0; y < motifRows / 2; y++) {
+    for (let y = 0; y < motifRows; y++) {
       for (let x = 0; x < motifCols / 2; x++) {
         let type = floor(random(4)); // Random type for the top-left quadrant
         motifPattern[y][x] = new Tile(x * size, y * size, type);
@@ -1188,7 +1414,7 @@ function createSymmetricPattern(symmetryType, motifRatio) {
         // Top-right quadrant (rotate 90 degrees clockwise)
         let newType = rotateTypeClockwise(type);
         motifPattern[x][motifCols - y - 1] = new Tile(
-          (motifCols - y - 1) * size,
+          (cols - y - 1) * size,
           x * size,
           newType
         );
@@ -1197,15 +1423,15 @@ function createSymmetricPattern(symmetryType, motifRatio) {
         newType = rotateTypeCounterClockwise(type);
         motifPattern[motifRows - x - 1][y] = new Tile(
           y * size,
-          (motifRows - x - 1) * size,
+          (rows - x - 1) * size,
           newType
         );
 
         // Bottom-right quadrant (rotate 180 degrees)
         newType = rotateType180(type);
         motifPattern[motifRows - y - 1][motifCols - x - 1] = new Tile(
-          (motifCols - x - 1) * size,
-          (motifRows - y - 1) * size,
+          (cols - x - 1) * size,
+          (rows - y - 1) * size,
           newType
         );
       }
@@ -1288,8 +1514,7 @@ function createSymmetricPattern(symmetryType, motifRatio) {
       }
       pattern.push(row);
     }
-
-} else if (symmetryType === "p4g") {
+  } else if (symmetryType === "p4g") {
   let motifPattern = [];
   for (let y = 0; y < motifRows; y++) {
     motifPattern[y] = new Array(motifCols);
@@ -1448,132 +1673,3 @@ function mirrorAndFlipVertically(type) {
 
 // END OF HELPER FUNCTIONS // DO NOT TOUCH !!!
 
-
-function switchInstruments(selection) {
-  if (selection === "Grand Piano and Organ") {
-    instruments.TL = new Tone.Sampler({ urls: { A4: "A4.mp3", C4: "C4.mp3" } }).toDestination();
-    instruments.TR = new Tone.Sampler({ urls: { A4: "A4.mp3", C4: "C4.mp3" } }).toDestination();
-  } else if (selection === "Default Synths") {
-    instruments.TL = new Tone.Synth({ oscillator: { type: "triangle" }, envelope: { release: 0.5 } }).toDestination();
-    instruments.TR = new Tone.Synth({ oscillator: { type: "sine" }, envelope: { release: 0.3 } }).toDestination();
-  }
-}
-
-function playMusic() {
-  const startTime = Tone.now();
-  const baseTimeStep = 1 / playbackSpeed; // Adjust base time step by playback speed
-  const noteDuration = 0.5 / playbackSpeed; // Adjust note duration by playback speed
-  const highlightDuration = 200 / playbackSpeed; // Adjust highlight duration by playback speed
-
-  const grandPiano = new Tone.Sampler({
-    urls: {
-      A4: "A4.mp3",
-      C4: "C4.mp3",
-      E4: "E4.mp3",
-    },
-    baseUrl: "https://tonejs.github.io/audio/salamander/",
-  }).toDestination();
-
-  // Generate music based on tile patterns and transformations
-  tiles.forEach((row, rowIndex) => {
-    row.forEach((tile, colIndex) => {
-      const motifStartTime =
-        startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
-
-      // Map the tile type to a note in the current scale
-      const noteIndex = tile.type % currentScale.length;
-      const baseNote = currentScale[noteIndex];
-
-      // Adjust pitch and chords using transformations and patterns
-      let pitch = baseNote;
-      let chord = mapChord(baseNote); // Default chord based on root note
-
-      switch (currentTransformation) {
-        case "Inversion":
-          pitch = currentScale[0] + (currentScale[0] - baseNote);
-          chord = mapChord(pitch); // Update chord after inversion
-          break;
-        case "Retrograde":
-          pitch = currentScale[currentScale.length - 1 - noteIndex];
-          chord = mapChord(pitch); // Update chord after retrograde
-          break;
-        case "Augmentation":
-          pitch += 12; // Shift an octave up
-          chord = mapChord(pitch); // Update chord after augmentation
-          break;
-        case "Canon":
-        case "Counterpoint":
-          // Handled in layering section below
-          break;
-      }
-
-      // Apply dynamic inversion to chords
-      const inversionLevel = (rowIndex + colIndex) % chord.length;
-      chord = invertChord(chord, inversionLevel);
-
-      // Play the chord or single note
-      setTimeout(() => {
-        if (playMode === "Harmony") {
-          // Play the chord
-          chord.forEach((note, index) => {
-            setTimeout(() => {
-              grandPiano.triggerAttackRelease(
-                Tone.Frequency(note, "midi").toNote(),
-                noteDuration
-              );
-            }, index * (200 / playbackSpeed)); // Stagger notes within the chord
-          });
-        } else if (playMode === "Melody") {
-          // Play a single note
-          grandPiano.triggerAttackRelease(
-            Tone.Frequency(pitch, "midi").toNote(),
-            noteDuration
-          );
-        }
-
-        // Highlight the tile for visual feedback
-        tile.highlighted = true;
-        setTimeout(() => {
-          tile.highlighted = false; // Remove highlight after duration
-        }, highlightDuration);
-      }, (motifStartTime - Tone.now()) * 1000);
-    });
-  });
-
-  // Canon and Counterpoint Layering
-  if (currentTransformation === "Canon" || currentTransformation === "Counterpoint") {
-    tiles.forEach((row, rowIndex) => {
-      row.forEach((tile, colIndex) => {
-        const motifStartTime =
-          startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
-        const canonOffset = 0.5 / playbackSpeed; // Adjust delay for canon
-        const counterpointOffset = 7; // Fifth above for counterpoint
-        const noteIndex = tile.type % currentScale.length;
-        const baseNote = currentScale[noteIndex];
-
-        const secondaryNote =
-          currentTransformation === "Canon"
-            ? baseNote
-            : baseNote + counterpointOffset;
-
-        setTimeout(() => {
-          grandPiano.triggerAttackRelease(
-            Tone.Frequency(secondaryNote, "midi").toNote(),
-            noteDuration,
-            motifStartTime + canonOffset
-          );
-
-          // Highlight the tile for the secondary melody
-          tile.highlighted = true;
-          setTimeout(() => {
-            tile.highlighted = false;
-          }, highlightDuration);
-        }, (motifStartTime + canonOffset - Tone.now()) * 1000);
-      });
-    });
-  }
-
-  console.log(
-    `Playing with Grand Piano, scale: ${currentScale}, transformation: ${currentTransformation}, speed: ${playbackSpeed}`
-  );
-}
