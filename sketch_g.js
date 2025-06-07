@@ -12,21 +12,11 @@ let motifRatio = 2; // Determines the motif's size
 let playMode = "Melody"; // Default play mode
 
 let playbackSpeed = 1; // Default playback speed multiplier
+
+// Magenta.js model variable
+let musicVAE;
 // Track whether music is currently playing
-
 let isPlaying = false;
-
-function updatePlayButtonIcon () {
-  const icon = document.getElementById('play-icon');
-  if (!icon) return;
-  if (isPlaying) {
-    icon.classList.remove('fa-circle-play');
-    icon.classList.add   ('fa-circle-stop');
-  } else {
-    icon.classList.remove('fa-circle-stop');
-    icon.classList.add   ('fa-circle-play');
-  }
-}
 
 
 // GUI Elements
@@ -194,7 +184,28 @@ async function exportBundle() {
   const zipBlob = await zip.generateAsync({type:'blob'});
   downloadBlob(zipBlob, `truchet_bundle_${tag}_${ts}.zip`);
 }
+
+// Generate MIDI data from the current pattern
+async function generateMidi() {
+  // Existing MIDI generation logic was removed in a previous step.
+  // This function is now used to generate a NoteSequence for Magenta.js.
+}
 // ─────────────────────────
+
+// Generate a new melody using the Magenta.js model
+async function generateAiMelody(inputNoteSequence) {
+  if (!musicVAE || !musicVAE.isInitialized()) {
+    console.warn("Magenta.js model not loaded yet.");
+    return null;
+  }
+  try {
+    const generatedSequence = await musicVAE.sample(inputNoteSequence, 1, 0.5); // Sample 1 sequence with temperature 0.5
+    return generatedSequence[0]; // The sample method returns an array, return the first element
+  } catch (error) {
+    console.error("Error generating AI melody:", error);
+    return null;
+  }
+}
 
 // Helper Functions
 function assignScaleToInstruments(scaleIndex) {
@@ -202,7 +213,7 @@ function assignScaleToInstruments(scaleIndex) {
   console.log(`Scale selected: ${scaleNames[scaleIndex]}`);
 }
 
-function mapPitch(tileType) {
+function mapPitch(tileType, scale) {
   const noteIndex = tileType % currentScale.length; // Cycle through scale notes
   const octaveOffset = Math.floor(tileType / currentScale.length) * 12; // Add dynamic octave offset
   const note = currentScale[noteIndex] + octaveOffset;
@@ -225,8 +236,8 @@ function invertChord(chord, inversionLevel) {
   return inversion;
 }
 
-function mapChordWithInversion(tileType, tilePosition) {
-  const rootNote = mapPitch(tileType);
+function mapChordWithInversion(tileType, tilePosition, scale) {
+  const rootNote = mapPitch(tileType, scale);
   const chord = mapChord(rootNote);
 
   // Determine inversion level based on tile position
@@ -242,127 +253,76 @@ function clearAllTimeouts() {
   timeoutIds = [];
 }
 
-function playMusic() {
+async function playMusic() {
   if (!grandPianoReady) {
     console.warn("Sampler lädt noch …");
     return;
   }
-  clearAllTimeouts();      // alte geplante Events entfernen
-  isPlaying = true;
-  updatePlayButtonIcon();
-  const startTime = Tone.now();
-  const baseTimeStep = 1 / playbackSpeed; // Adjust base time step by playback speed
-  const noteDuration = 0.5 / playbackSpeed; // Adjust note duration by playback speed
-  const highlightDuration = 200 / playbackSpeed; // Adjust highlight duration by playback speed
 
-  // Use the global grandPiano sampler
-  tiles.forEach((row, rowIndex) => {
-    row.forEach((tile, colIndex) => {
-      const motifStartTime =
-        startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
-
-      // Map the tile type to a note in the current scale
-      const noteIndex = tile.type % currentScale.length;
-      const baseNote = currentScale[noteIndex];
-
-      // Adjust pitch and chords using transformations and patterns
-      let pitch = baseNote;
-      let chord = mapChord(baseNote); // Default chord based on root note
-
-      switch (currentTransformation) {
-        case "Inversion":
-          pitch = currentScale[0] + (currentScale[0] - baseNote);
-          chord = mapChord(pitch); // Update chord after inversion
-          break;
-        case "Retrograde":
-          pitch = currentScale[currentScale.length - 1 - noteIndex];
-          chord = mapChord(pitch); // Update chord after retrograde
-          break;
-        case "Augmentation":
-          pitch += 12; // Shift an octave up
-          chord = mapChord(pitch); // Update chord after augmentation
-          break;
-        case "Canon":
-        case "Counterpoint":
-          // Handled in layering section below
-          break;
-      }
-
-      // Apply dynamic inversion to chords
-      const inversionLevel = (rowIndex + colIndex) % chord.length;
-      chord = invertChord(chord, inversionLevel);
-
-      // Play the chord or single note
-      const h = setTimeout(() => {
-        if (playMode === "Harmony") {
-          // Play the chord
-          chord.forEach((note, index) => {
-            setTimeout(() => {
-              grandPiano.triggerAttackRelease(
-                Tone.Frequency(note, "midi").toNote(),
-                noteDuration
-              );
-            }, index * (200 / playbackSpeed)); // Stagger notes within the chord
-          });
-        } else if (playMode === "Melody") {
-          // Play a single note
-          grandPiano.triggerAttackRelease(
-            Tone.Frequency(pitch, "midi").toNote(),
-            noteDuration
-          );
-        }
-
-        // Highlight the tile for visual feedback
-        tile.highlighted = true;
-        setTimeout(() => {
-          tile.highlighted = false; // Remove highlight after duration
-        }, highlightDuration);
-      }, (motifStartTime - Tone.now()) * 1000);
-      timeoutIds.push(h);
-    });
-  });
-
-  // Canon and Counterpoint Layering
-  if (currentTransformation === "Canon" || currentTransformation === "Counterpoint") {
-    tiles.forEach((row, rowIndex) => {
-      row.forEach((tile, colIndex) => {
-        const motifStartTime =
-          startTime + rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
-        const canonOffset = 0.5 / playbackSpeed; // Adjust delay for canon
-        const counterpointOffset = 7; // Fifth above for counterpoint
-        const noteIndex = tile.type % currentScale.length;
-        const baseNote = currentScale[noteIndex];
-        const secondaryNote =
-          currentTransformation === "Canon"
-            ? baseNote
-            : baseNote + counterpointOffset;
-        const h2 = setTimeout(() => {
-          grandPiano.triggerAttackRelease(
-            Tone.Frequency(secondaryNote, "midi").toNote(),
-            noteDuration,
-            motifStartTime + canonOffset
-          );
-          // Highlight the tile for the secondary melody
-          tile.highlighted = true;
-          setTimeout(() => {
-            tile.highlighted = false;
-          }, highlightDuration);
-        }, (motifStartTime + canonOffset - Tone.now()) * 1000);
-        timeoutIds.push(h2);
-      });
-    });
+  if (!musicVAE || !musicVAE.isInitialized()) {
+    console.warn("Magenta.js model is not loaded yet. Please wait.");
+    return;
   }
 
-  // reset play‑icon when the sequence is finished
-  const totalDuration =
-    ((rows - 1) * baseTimeStep) +
-    ((cols - 1) * (0.2 / playbackSpeed)) +
-    noteDuration + 0.5;          // little safety margin
-  const resetId = setTimeout(() => {
+  clearAllTimeouts();      // alte geplante Events entfernen
+  isPlaying = true;
+  const startTime = Tone.now();
+  const highlightDuration = 200 / playbackSpeed; // Adjust highlight duration by playback speed
+
+  // Generate the NoteSequence from the current pattern
+  const inputNoteSequence = generateNoteSequenceFromPattern();
+
+  // Generate the AI melody
+  const generatedSequence = await generateAiMelody(inputNoteSequence);
+
+  if (!generatedSequence) {
+    console.warn("Failed to generate AI melody.");
     isPlaying = false;
-    updatePlayButtonIcon();
-  }, totalDuration * 1000);
-  timeoutIds.push(resetId);
+    return;
+  }
+
+  // Play the generated NoteSequence
+  generatedSequence.notes.forEach((note) => {
+    const noteStartTime = startTime + note.time / playbackSpeed; // Adjust timing based on playback speed
+    const noteEndTime = startTime + note.endTime / playbackSpeed; // Adjust timing based on playback speed
+    const noteDuration = noteEndTime - noteStartTime;
+
+    const h = setTimeout(() => {
+      grandPiano.triggerAttackRelease(
+        Tone.Frequency(note.pitch, "midi").toNote(),
+        noteDuration
+      );
+      // Find the tile corresponding to this note's time for highlighting
+      // This is an approximation, as the generated notes might not map directly to a single tile.
+      // We can find the tile whose start time is closest to the note's start time.
+      let closestTile = null;
+      let minTimeDiff = Infinity;
+
+      tiles.forEach((row) => {
+        row.forEach((tile) => {
+          // Approximate the tile's start time based on grid position
+          const tileStartTimeApprox = startTime + tiles.indexOf(row) * (1 / playbackSpeed) + row.indexOf(tile) * (0.2 / playbackSpeed);
+          const timeDiff = Math.abs(tileStartTimeApprox - noteStartTime);
+
+          if (timeDiff < minTimeDiff) {
+            minTimeDiff = timeDiff;
+            closestTile = tile;
+          }
+        });
+      });
+
+      if (closestTile) {
+        // Highlight the tile for visual feedback.
+        // This uses a direct update and setTimeout, which might not sync perfectly with Tone.js timing.
+        closestTile.highlighted = true;
+        setTimeout(() => {
+          if (closestTile) closestTile.highlighted = false; // Remove highlight after duration
+        }, highlightDuration); // Use the existing highlight duration
+      }
+
+    }, (noteStartTime - Tone.now()) * 1000);
+      timeoutIds.push(h);
+  });
 
   console.log(
     `Playing with Grand Piano, scale: ${currentScale}, transformation: ${currentTransformation}, speed: ${playbackSpeed}`
@@ -382,18 +342,20 @@ function setup() {
     }
   }, { once: true }); // Ensure this runs only once
 
-  document.getElementById("play-button").addEventListener("click", async () => {
-    if (Tone.Transport.state === "started") {
-      Tone.Transport.stop();
-      Tone.Transport.cancel(); // Clears all scheduled events
-      console.log("Music paused and events cleared.");
-      isPlaying = false;
-      updatePlayButtonIcon();
-    } else {
-      await Tone.start();
-      Tone.Transport.start();
-      console.log("Music started.");
+  const btnPlay = document.getElementById("play-button");
+  btnPlay.addEventListener("click", async () => {
+    // Stelle sicher, dass der Audio‑Context läuft
+    await Tone.start();
+    if (Tone.context.state !== 'running') {
+      await Tone.context.resume();
+    }
+
+    if (isPlaying) {          // bereits in Wiedergabe → Stopp
+      handleStop();
+      btnPlay.textContent = "Play";
+    } else {                  // starte neue Wiedergabe
       playMusic();
+      btnPlay.textContent = "Stop";
     }
   });
 
@@ -414,11 +376,19 @@ function setup() {
     switchInstruments(e.target.value); // Connect instrument selector
   });
 
-  // CHANGED: Use scale-select instead of scale
-  document.getElementById('scale-select').addEventListener('change', (e) => {
-    const scaleIndex = e.target.selectedIndex;
-    assignScaleToInstruments(scaleIndex); // Update scale
-  });
+  // Find the scale selector – accept either id="scale" (new) or the older id="scale-select"
+  const scaleSelect =
+    document.getElementById('scale') ||
+    document.getElementById('scale-select');
+
+  if (scaleSelect) {
+    scaleSelect.addEventListener('change', (e) => {
+      const scaleIndex = e.target.selectedIndex;
+      assignScaleToInstruments(scaleIndex); // Update scale
+    });
+  } else {
+    console.warn('⚠️  No scale selector found in the DOM (id="scale" or "scale-select").');
+  }
 
   document.getElementById('speed').addEventListener('input', (e) => {
     playbackSpeed = parseFloat(e.target.value);
@@ -429,15 +399,10 @@ function setup() {
     currentTransformation = e.target.value; // Update transformation
     applyTransformation(currentTransformation); // Apply the selected transformation
   });
-  // Transport / Regenerate Buttons anschließen (nur falls vorhanden)
-  const btnRegenerate = document.getElementById("btnRegenerate");
-  if (btnRegenerate) btnRegenerate.addEventListener("click", handleRegenerate);
-
-  const btnPause = document.getElementById("btnPause");
-  if (btnPause) btnPause.addEventListener("click", handlePause);
-
-  const btnStop = document.getElementById("btnStop");
-  if (btnStop) btnStop.addEventListener("click", handleStop);
+  // Transport/Regenerate Buttons anschließen
+  document.getElementById("btnPause").addEventListener("click", handlePause);
+  document.getElementById("btnStop").addEventListener("click", handleStop);
+  document.getElementById("btnRegenerate").addEventListener("click", handleRegenerate);
 
   // Export Pattern and Audio Buttons (only if the buttons exist in the DOM)
   const btnExportPattern = document.getElementById('btnExportPattern');
@@ -452,10 +417,53 @@ function setup() {
   // Initialize pattern and settings
   cols = width / size;
   rows = height / size;
+
+  // Check if window.music_vae and window.music_vae.MusicVAE are defined before proceeding
+  if (window.music_vae && window.music_vae.MusicVAE) {
+    // Instantiate and initialise the MusicVAE model once
+    musicVAE = new window.music_vae.MusicVAE(
+      'https://storage.googleapis.com/magentadata/js/checkpoints/music_vae/mel_tiny_vae'
+    );
+    musicVAE.initialize()
+      .then(() => console.log('MusicVAE model loaded!'))
+      .catch(err => console.error('MusicVAE failed to load:', err));
+  }
+
+  // Function to generate NoteSequence from current pattern
+  function generateNoteSequenceFromPattern() {
+    const noteSequence = {
+      notes: [],
+      quantizationInfo: { stepsPerQuarter: 4 }, // Example: 4 steps per quarter note
+      tempos: [{ time: 0, qpm: 120 }], // Example: 120 beats per minute
+      totalTime: 0, // Will be calculated later
+    };
+
+    const baseTimeStep = 1 / playbackSpeed;
+    const noteDuration = 0.5 / playbackSpeed;
+    let maxTime = 0;
+
+    tiles.forEach((row, rowIndex) => {
+      row.forEach((tile, colIndex) => {
+        const startTime = rowIndex * baseTimeStep + colIndex * (0.2 / playbackSpeed);
+        const endTime = startTime + noteDuration;
+        maxTime = Math.max(maxTime, endTime);
+
+        if (playMode === "Melody") {
+          const pitch = mapPitch(tile.type, currentScale);
+          noteSequence.notes.push({ pitch: pitch, startTime: startTime, endTime: endTime }); // Use startTime/endTime consistent with NoteSequence
+        } else if (playMode === "Harmony") {
+          const chord = mapChordWithInversion(tile.type, { row: rowIndex, col: colIndex }, currentScale);
+          chord.forEach((note) => {
+            noteSequence.notes.push({ pitch: note, startTime: startTime, endTime: endTime }); // Use startTime/endTime consistent with NoteSequence
+          });
+        }
+      });
+    });
+    noteSequence.totalTime = maxTime; // Set the total time for the sequence
+    return noteSequence; // Return Magenta.js NoteSequence object
+  }
   assignScaleToInstruments(0); // Default to the first scale
   generatePattern(); // Generate the initial pattern
-
-  updatePlayButtonIcon();
 }
 
 function draw() {
@@ -474,24 +482,23 @@ function handlePause() {
     Tone.Transport.pause();
     clearAllTimeouts();
     isPlaying = false;
-    updatePlayButtonIcon();
     console.log("Music paused.");
   } else {
     // Resume playback
     Tone.Transport.start();
     isPlaying = true;
-    updatePlayButtonIcon();
     console.log("Music resumed.");
   }
 }
 
 function handleStop() {
-  // Stop everything and reset
   Tone.Transport.stop();
   Tone.Transport.cancel();
   clearAllTimeouts();
   isPlaying = false;
-  updatePlayButtonIcon();
+  // Button‑Beschriftung zurücksetzen (falls vorhanden)
+  const btn = document.getElementById("play-button");
+  if (btn) btn.textContent = "Play";
   console.log("Music stopped.");
 }
 
@@ -501,7 +508,6 @@ function handleRegenerate() {
   Tone.Transport.cancel();
   clearAllTimeouts();
   isPlaying = false;
-  updatePlayButtonIcon();
   generatePattern();
   console.log("Pattern regenerated.");
 }
@@ -565,6 +571,9 @@ function applyTransformation(transformation) {
           return new Tile(width - tile.x - size, tile.y, tile.type);
         case "Augmentation":
           newType = (tile.type + 1) % 4; // Shift tile type cyclically
+          break;
+        case "Diminution":
+          newType = (tile.type + 3) % 4; // Shift tile type cyclically in reverse
           break;
         case "Canon":
           // Apply Canon transformation logic here if applicable

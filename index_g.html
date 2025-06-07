@@ -8,7 +8,13 @@
   <!-- libs -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.2/p5.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.9/Tone.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" referrerpolicy="no-referrer" />
+  
+  <!-- Magenta.js ( Music VAE & friends ) -->
+<script src="https://cdn.jsdelivr.net/npm/@magenta/music@1.23.1"></script>
+<script>
+  /* Alias, damit sketch_g.js weiterhin window.music_vae verwendet */
+  // window.music_vae = window.mm;
+</script>
 
   <!-- ⬇︎ Inline-Styles nur für das Layout & die neuen Buttons  -->
   <style>
@@ -16,6 +22,29 @@
       background:#f5f5f5;font-family:Arial,Helvetica,sans-serif}
 
     canvas{margin-top:20px}
+
+    /* --- neuer 4-Spalten-Block für Regenerate | Pause | Stop ------------- */
+    #transport-controls{
+      display:grid;grid-template-columns:repeat(4,1fr);
+      gap:10px;width:320px;margin-top:20px
+    }
+    #transport-controls button{
+      padding:10px 0;background:#000;color:#fff;
+      font-size:14px;font-weight:700;border:0;border-radius:5px;cursor:pointer
+    }
+    #transport-controls button:hover{background:#333}
+
+    /* --- neuer 2‑Spalten‑Block für Export‑Buttons ------------------------ */
+    #export-controls{
+      display:grid;grid-template-columns:repeat(2,1fr);
+      gap:10px;width:320px;margin-top:10px
+    }
+    #export-controls button{
+      padding:10px 0;background:#000;color:#fff;
+      font-size:14px;font-weight:700;border:0;border-radius:5px;cursor:pointer
+    }
+    #export-controls button:hover{background:#333}
+    #transport-controls .double{grid-column:span 2}
 
     /* --- bestehender 2-Spalten-Block (Play + Parameter) ------------------ */
     #controls{
@@ -25,49 +54,33 @@
     #controls label{font-size:14px;font-weight:700;text-align:left}
     #controls select,#controls input{font-family:inherit;font-size:14px;padding:5px;margin:0}
 
-    #action-buttons{
-      display:grid;
-      grid-template-columns:repeat(4,60px);
-      gap:10px;
-      margin-top:20px;
+    #play-button{
+      grid-column:span 2;display:flex;justify-content:center;align-items:center;
+      padding:10px 20px;background:#000;color:#fff;font-size:16px;border:0;border-radius:5px;cursor:pointer
     }
-    #action-buttons button{
-      width:60px;
-      height:60px;
-      border-radius:50%;
-      border:none;
-      background:#000;
-      color:#fff;
-      font-size:24px;
-      cursor:pointer;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-    }
-    #action-buttons button:hover{background:#333}
+    #play-button:hover{background:#333}
   </style>
 </head>
 <body>
   <div id="canvas-container"><!-- p5-Canvas --></div>
 
-  <!-- 🔘 Action buttons in one row -->
-  <div id="action-buttons">
-    <button id="play-button" aria-label="Play / Stop">
-      <i id="play-icon" class="fa-solid fa-play"></i>
-    </button>
-    <button id="btnRegenerate" aria-label="Regenerate">
-      <i class="fa-solid fa-rotate-right"></i>
-    </button>
-    <button id="btnExportPattern" aria-label="Export Pattern">
-      <i class="fa-solid fa-file-image"></i>
-    </button>
-    <button id="btnExportAudio" aria-label="Export Audio">
-      <i class="fa-solid fa-file-audio"></i>
-    </button>
+  <!-- 🚦 Transport-Buttons -->
+  <div id="transport-controls">
+    <button id="btnRegenerate" class="double">Regenerate</button>
+    <button id="btnPause">Pause</button>
+    <button id="btnStop">Stop</button>
+  </div>
+
+  <!-- 💾 Export-Buttons -->
+  <div id="export-controls">
+    <button id="btnExportPattern">Export Pattern</button>
+    <button id="btnExportAudio">Export Audio</button>
   </div>
 
   <!-- 🎛 bestehende Controls -->
   <div id="controls">
+    <button id="play-button">Play</button>
+
     <label for="size">Size:</label>
     <select id="size">
       <option>80</option><option>40</option><option>20</option><option>10</option><option>5</option>
@@ -119,6 +132,6 @@
     document.body.addEventListener('click',resumeAudioContext,{once:true});
   </script>
 
-  <script src="sketch.js"></script>
+  <script src="sketch_g.js"></script>
 </body>
 </html>
